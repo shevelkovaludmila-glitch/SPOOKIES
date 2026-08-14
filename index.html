@@ -195,11 +195,17 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
 #board-area{flex:1 1 auto;width:100%;display:flex;align-items:center;justify-content:center;min-height:0;}
 #board{
   position:relative;
+  box-sizing:content-box;      /* ширина = чистое поле, рамка и паддинг сверху */
   border:3px solid var(--ink);
   border-radius:16px;
-  box-shadow:inset 0 0 0 2px var(--wine),0 8px 18px rgba(0,0,0,.4);
+  box-shadow:0 8px 18px rgba(0,0,0,.4);
   background:rgba(0,0,0,.22);
   padding:var(--gap);
+}
+#board::before{               /* бордовая внутренняя линия, как подкладка плаща */
+  content:"";position:absolute;inset:0;
+  border:2px solid var(--wine);border-radius:13px;
+  pointer-events:none;
 }
 #cells{position:absolute;inset:var(--gap);}
 .cell{
@@ -217,6 +223,7 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
   will-change:transform;
 }
 .tile-inner{
+  position:relative;
   width:100%;height:100%;
   display:flex;align-items:center;justify-content:center;
   border-radius:10px;
@@ -224,6 +231,12 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
   will-change:transform;
 }
 .tile img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;}
+.tile .fb{ /* видно только когда PNG не загрузился */
+  display:none;position:absolute;inset:12%;border-radius:50%;
+  align-items:center;justify-content:center;
+  font-weight:900;font-size:calc(var(--tile) * .42);color:#1a0b2e;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.25);
+}
 .tile.picked .tile-inner{transform:scale(1.1);}
 .tile.picked{z-index:6;}
 .tile.picked .tile-inner{box-shadow:0 0 0 2px rgba(255,255,255,.55),0 0 14px rgba(255,117,24,.7);}
@@ -475,13 +488,14 @@ const CONFIG = {
   },
 
   // 6 базовых типов
+  // fallback — цвет и буква, которые рисуются ТОЛЬКО если файл не загрузился
   tiles: [
-    { type: 'skull',     src: 'assets/skull.png' },
-    { type: 'pumpkin',   src: 'assets/pumpkin.png' },
-    { type: 'apple',     src: 'assets/apple.png' },
-    { type: 'candycorn', src: 'assets/candycorn.png' },
-    { type: 'ghost',     src: 'assets/ghost.png' },
-    { type: 'worm',      src: 'assets/worm.png' }
+    { type: 'skull',     src: 'assets/skull.png',     fbColor: '#f2e7cf', fbLetter: 'S' },
+    { type: 'pumpkin',   src: 'assets/pumpkin.png',   fbColor: '#ff7518', fbLetter: 'P' },
+    { type: 'apple',     src: 'assets/apple.png',     fbColor: '#b3202f', fbLetter: 'A' },
+    { type: 'candycorn', src: 'assets/candycorn.png', fbColor: '#ffd24a', fbLetter: 'C' },
+    { type: 'ghost',     src: 'assets/ghost.png',     fbColor: '#a9713f', fbLetter: 'G' },
+    { type: 'worm',      src: 'assets/worm.png',      fbColor: '#9acd32', fbLetter: 'W' }
   ],
 
   // спецэлементы
@@ -724,7 +738,15 @@ const Assets = (() => {
         .concat(Object.keys(CONFIG.specials).map(k => CONFIG.specials[k].src))
         .concat([CONFIG.assets.dino, CONFIG.assets.logo]);
       await Promise.all(list.map(preload));
-      if (missing.size) console.warn('[SPOOKIES] не найдены файлы:', Array.from(missing));
+      if (missing.size) {
+        console.warn('[SPOOKIES] не загрузились файлы (проверь путь и регистр имён):', Array.from(missing));
+        const bar = document.createElement('div');
+        bar.style.cssText = 'position:absolute;left:0;right:0;top:0;z-index:99;background:#8b1a2b;' +
+          'color:#fff;font:700 11px/1.35 sans-serif;padding:5px 8px;text-align:center;';
+        bar.textContent = 'Не загрузились картинки (' + missing.size + '). Открой консоль — список путей там.';
+        bar.addEventListener('click', () => bar.remove());
+        document.getElementById('app').appendChild(bar);
+      }
     },
     has(src) { return !missing.has(src); }
   };
@@ -1066,13 +1088,14 @@ function layoutSize() {
   const areaH = el.boardArea.clientHeight || 300;
   const gap = CONFIG.grid.gap, pad = CONFIG.grid.padX;
 
-  const byW = Math.floor((areaW - 2 * pad - (N + 1) * gap) / N);
-  const byH = Math.floor((areaH - (N + 1) * gap - 8) / N);
+  const BORDER = 6; // 3px рамки с каждой стороны
+  const byW = Math.floor((areaW - 2 * pad - BORDER - (N + 1) * gap) / N);
+  const byH = Math.floor((areaH - BORDER - (N + 1) * gap - 8) / N);
   TILE = Math.max(CONFIG.grid.minTile, Math.min(CONFIG.grid.maxTile, Math.min(byW, byH)));
 
   document.documentElement.style.setProperty('--tile', TILE + 'px');
   document.documentElement.style.setProperty('--gap', gap + 'px');
-  const side = N * TILE + (N - 1) * gap + 2 * gap;
+  const side = N * TILE + (N - 1) * gap; // content-box: только само поле
   el.board.style.width = side + 'px';
   el.board.style.height = side + 'px';
   drawCells();
@@ -1099,7 +1122,10 @@ function createTileEl(tile, r, c) {
   inner.className = 'tile-inner';
   const img = document.createElement('img');
   img.alt = '';
+  const fb = document.createElement('span');
+  fb.className = 'fb';
   inner.appendChild(img);
+  inner.appendChild(fb);
   d.appendChild(inner);
   tile.el = d;
   el.tilesLayer.appendChild(d);
@@ -1109,21 +1135,33 @@ function createTileEl(tile, r, c) {
 
 function paintTile(tile) {
   const img = tile.el.querySelector('img');
+  const fb = tile.el.querySelector('.fb');
   tile.el.classList.remove('special', 'sp-candle', 'sp-bomb', 'sp-cauldron', 'sp-missing');
+
+  let src = srcOfType(tile.type);
   if (tile.special) {
     const cfg = CONFIG.specials[tile.special];
     tile.el.classList.add('special');
     if (cfg && Assets.has(cfg.src)) {
-      img.src = cfg.src;
+      src = cfg.src;
       tile.el.classList.add(cfg.cls);
     } else {
-      // файла нет — обычный тайл со свечением, предупреждение уже в консоли
-      img.src = srcOfType(tile.type);
+      // файла спецэлемента нет — обычный тайл со свечением
       tile.el.classList.add('sp-missing');
-      console.warn('[SPOOKIES] нет картинки спецэлемента', tile.special, '— показываю тайл со свечением');
     }
+  }
+
+  if (Assets.has(src)) {
+    img.style.display = '';
+    fb.style.display = 'none';
+    img.src = src;
   } else {
-    img.src = srcOfType(tile.type);
+    // PNG не загрузился: рисуем читаемую заглушку, чтобы было видно, ЧТО именно сломалось
+    const cfg = CONFIG.tiles.find(t => t.type === tile.type) || {};
+    img.style.display = 'none';
+    fb.style.display = 'flex';
+    fb.style.background = cfg.fbColor || '#888';
+    fb.textContent = cfg.fbLetter || '?';
   }
 }
 
