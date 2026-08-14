@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>SPOOKIES</title>
+<style>
+/* ============================================================
+   SPOOKIES — палитра и базовые токены
+   ============================================================ */
+:root{
+  --bg-1:#1a0b2e;
+  --bg-2:#2d1b4e;
+  --orange:#ff7518;
+  --lime:#9acd32;
+  --pink:#ff69b4;
+  --wine:#8b1a2b;
+  --ink:#0b0417;
+  --cream:#fff7ea;
+
+  --tile:40px;          /* пересчитывается из JS */
+  --gap:3px;
+  --header-h:104px;     /* пересчитывается из JS */
+  --footer-h:56px;
+
+  --cell-bg:rgba(255,255,255,0.07);
+  --cell-br:rgba(255,255,255,0.12);
+  --cell-bg-special:rgba(255,255,255,0.14);
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{
+  margin:0;padding:0;height:100%;width:100%;
+  background:var(--bg-1);
+  overflow:hidden;
+  overscroll-behavior:none;
+  touch-action:manipulation;
+  user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  color:var(--cream);
+}
+
+#app{
+  position:relative;width:100%;height:100%;
+  min-height:100%;
+  background:linear-gradient(180deg,var(--bg-1) 0%,var(--bg-2) 100%);
+  overflow:hidden;
+}
+
+/* ---------- «карамельная» типографика ---------- */
+.candy{
+  font-weight:900;
+  letter-spacing:0.02em;
+  -webkit-text-stroke:1.5px var(--ink);
+  paint-order:stroke fill;
+  text-shadow:0 2px 0 rgba(0,0,0,0.45);
+}
+
+/* ============================================================
+   ФОН: ночное небо, луна, ветки, мыши, туман
+   ============================================================ */
+#sky{position:absolute;inset:0;z-index:0;pointer-events:none;}
+#sky svg{width:100%;height:100%;display:block;}
+.moon-glow{animation:moonPulse 7s ease-in-out infinite;transform-origin:center;}
+@keyframes moonPulse{0%,100%{opacity:.55}50%{opacity:.8}}
+.bat{animation:batFly 14s linear infinite;}
+.bat-2{animation-duration:19s;animation-delay:-6s;}
+.bat-3{animation-duration:24s;animation-delay:-12s;}
+@keyframes batFly{
+  0%{transform:translate(-40px,0)}
+  50%{transform:translate(220px,-18px)}
+  100%{transform:translate(480px,4px)}
+}
+.bat-wing{animation:batWing 0.5s ease-in-out infinite alternate;transform-origin:center;}
+@keyframes batWing{from{transform:scaleY(1)}to{transform:scaleY(.55)}}
+.fog{animation:fogDrift 22s ease-in-out infinite alternate;}
+@keyframes fogDrift{from{transform:translateX(-20px)}to{transform:translateX(20px)}}
+
+/* ============================================================
+   ГРАФ ДИНАКУЛА + облачко речи
+   ============================================================ */
+#dino-wrap{
+  position:absolute;z-index:30;pointer-events:none;
+  transition:top .35s ease,right .35s ease,left .35s ease,height .35s ease;
+}
+#dino-avatar{height:100%;width:auto;display:block;filter:drop-shadow(0 6px 10px rgba(0,0,0,.45));
+  animation:sway 3.4s ease-in-out infinite;transform-origin:50% 100%;}
+@keyframes sway{0%,100%{transform:translateY(0) rotate(-1.5deg)}50%{transform:translateY(-4px) rotate(1.5deg)}}
+
+/* позиции Графа по экранам */
+#dino-wrap.pos-start {top:21%;left:50%;height:180px;transform:translateX(-50%);}
+#dino-wrap.pos-game  {top:2px;right:4px;height:calc(var(--header-h) - 4px);}
+#dino-wrap.pos-result{top:38%;left:50%;height:132px;transform:translateX(-50%);}
+#dino-wrap.hidden{display:none;}
+
+#dino-name{
+  position:absolute;top:100%;left:50%;transform:translateX(-50%);
+  margin-top:2px;white-space:nowrap;font-size:13px;color:var(--pink);
+}
+#dino-wrap.pos-game #dino-name{display:none;}
+
+#speech{
+  position:absolute;right:calc(100% - 6px);top:14%;
+  max-width:170px;min-width:96px;
+  background:#fff;color:var(--ink);
+  border:2.5px solid var(--ink);border-radius:14px;
+  padding:8px 10px;font-size:12.5px;font-weight:700;line-height:1.25;
+  box-shadow:0 4px 0 rgba(0,0,0,.35);
+  opacity:0;transform:translateY(6px) scale(.94);
+  transition:opacity .22s ease,transform .22s ease;
+}
+#speech.show{opacity:1;transform:translateY(0) scale(1);}
+#speech::after{ /* бордовый хвостик — как подкладка плаща */
+  content:"";position:absolute;right:-11px;top:50%;margin-top:-7px;
+  width:0;height:0;border:7px solid transparent;border-left-color:var(--wine);
+}
+#speech::before{
+  content:"";position:absolute;right:-15px;top:50%;margin-top:-8px;
+  width:0;height:0;border:8px solid transparent;border-left-color:var(--ink);
+}
+
+/* ============================================================
+   ЭКРАНЫ
+   ============================================================ */
+.screen{
+  position:absolute;inset:0;z-index:20;
+  display:none;flex-direction:column;align-items:center;
+  padding:14px 12px;
+}
+.screen.active{display:flex;}
+
+button{
+  font-family:inherit;font-weight:900;color:var(--cream);
+  border:2.5px solid var(--ink);border-radius:14px;
+  background:linear-gradient(180deg,#ff9a45,var(--orange));
+  box-shadow:0 4px 0 var(--wine);
+  min-height:44px;padding:0 18px;font-size:16px;
+  cursor:pointer;transition:transform .08s ease,box-shadow .08s ease;
+  touch-action:manipulation;
+}
+button:active{transform:translateY(3px);box-shadow:0 1px 0 var(--wine);}
+button[disabled]{opacity:.5;box-shadow:0 4px 0 rgba(0,0,0,.4);}
+button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px 0 #1c0f33;}
+
+/* ---------- стартовый экран ---------- */
+#logo{width:100%;max-width:320px;height:auto;display:block;margin-top:4px;}
+#start-spacer{height:210px;flex:0 1 auto;min-height:130px;}
+#bigo-field{width:100%;max-width:300px;display:flex;flex-direction:column;gap:6px;align-items:center;}
+#bigo-input{
+  width:100%;height:48px;text-align:center;
+  font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.04em;
+  color:var(--cream);background:rgba(0,0,0,.35);
+  border:2.5px solid var(--ink);border-radius:14px;outline:none;
+}
+#bigo-input:focus{border-color:var(--orange);}
+#bigo-input::placeholder{color:rgba(255,247,234,.45);font-weight:600;letter-spacing:0;}
+#bigo-error{min-height:16px;font-size:12px;font-weight:700;color:var(--pink);text-align:center;}
+#btn-play{width:100%;max-width:300px;height:54px;font-size:19px;margin-top:2px;}
+#btn-top-toggle{margin-top:10px;height:44px;font-size:14px;}
+#top-panel{
+  width:100%;max-width:300px;margin-top:8px;display:none;
+  background:rgba(0,0,0,.32);border:2px solid rgba(255,255,255,.14);
+  border-radius:14px;padding:8px 10px;
+}
+#top-panel.open{display:block;}
+.top-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;padding:3px 0;}
+.top-rank{width:20px;color:var(--orange);}
+.top-id{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.top-score{color:var(--lime);}
+.top-empty{font-size:12px;opacity:.7;text-align:center;padding:6px 0;font-weight:600;}
+
+/* ---------- игровой экран ---------- */
+#screen-game{padding:0;justify-content:flex-start;}
+#hud{
+  width:100%;height:var(--header-h);flex:0 0 auto;
+  display:flex;align-items:center;
+  padding:6px 10px;position:relative;z-index:25;
+}
+.hud-left{display:flex;flex-direction:column;gap:2px;}
+.hud-row{display:flex;align-items:baseline;gap:7px;}
+.hud-label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.65;}
+.hud-val{font-size:26px;line-height:1;}
+#score-val{color:var(--orange);}
+#moves-val{color:var(--lime);}
+#moves-val.low{color:var(--pink);animation:lowPulse .7s ease-in-out infinite;}
+@keyframes lowPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.18)}}
+#combo-line{
+  font-size:14px;font-weight:900;color:var(--pink);
+  opacity:0;transform:translateX(-6px);transition:opacity .2s,transform .2s;
+  -webkit-text-stroke:1px var(--ink);paint-order:stroke fill;
+}
+#combo-line.show{opacity:1;transform:translateX(0);}
+
+#board-area{flex:1 1 auto;width:100%;display:flex;align-items:center;justify-content:center;min-height:0;}
+#board{
+  position:relative;
+  border:3px solid var(--ink);
+  border-radius:16px;
+  box-shadow:inset 0 0 0 2px var(--wine),0 8px 18px rgba(0,0,0,.4);
+  background:rgba(0,0,0,.22);
+  padding:var(--gap);
+}
+#cells{position:absolute;inset:var(--gap);}
+.cell{
+  position:absolute;width:var(--tile);height:var(--tile);
+  background:var(--cell-bg);
+  border-radius:10px;
+  box-shadow:inset 0 0 0 1.5px var(--cell-br);
+}
+#tiles{position:absolute;inset:var(--gap);}
+#fx{position:absolute;inset:0;pointer-events:none;overflow:visible;}
+
+.tile{
+  position:absolute;width:var(--tile);height:var(--tile);
+  transition:transform .26s cubic-bezier(.32,.72,.34,1);
+  will-change:transform;
+}
+.tile-inner{
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:10px;
+  transition:transform .12s ease;
+  will-change:transform;
+}
+.tile img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;}
+.tile.picked .tile-inner{transform:scale(1.1);}
+.tile.picked{z-index:6;}
+.tile.picked .tile-inner{box-shadow:0 0 0 2px rgba(255,255,255,.55),0 0 14px rgba(255,117,24,.7);}
+
+/* спецэлементы: крупнее, светлее ячейка, пульсация, свечение */
+.tile.special .tile-inner{
+  transform:scale(1.1);
+  background:var(--cell-bg-special);
+  animation:spPulse 1.5s ease-in-out infinite;
+}
+@keyframes spPulse{0%,100%{transform:scale(1.1)}50%{transform:scale(1.166)}}
+.tile.sp-candle .tile-inner{box-shadow:0 0 12px 2px rgba(255,117,24,.75);}
+.tile.sp-bomb   .tile-inner{box-shadow:0 0 16px 4px rgba(255,60,20,.85);}
+.tile.sp-cauldron .tile-inner{box-shadow:0 0 14px 3px rgba(154,205,50,.8);}
+/* фолбэк, если файла спецэлемента нет */
+.tile.sp-missing .tile-inner{box-shadow:0 0 16px 4px rgba(255,255,255,.85);}
+
+.tile.flash .tile-inner{animation:spFlash .45s ease-out;}
+@keyframes spFlash{
+  0%{transform:scale(1.5);filter:brightness(3);}
+  60%{transform:scale(1.05);filter:brightness(1.4);}
+  100%{transform:scale(1.1);filter:none;}
+}
+.tile.flash-strong .tile-inner{animation:spFlashStrong .6s ease-out;}
+@keyframes spFlashStrong{
+  0%{transform:scale(1.9);filter:brightness(5);}
+  50%{transform:scale(1.15);filter:brightness(2);}
+  100%{transform:scale(1.1);filter:none;}
+}
+
+.tile.pop .tile-inner{animation:pop .22s ease-in forwards;}
+@keyframes pop{
+  0%{transform:scale(1)}
+  40%{transform:scale(1.25);filter:brightness(1.7)}
+  100%{transform:scale(0);opacity:0}
+}
+.tile.reject{animation:reject .26s ease;}
+@keyframes reject{0%,100%{filter:none}50%{filter:brightness(.65) saturate(.5)}}
+
+.float-score{
+  position:absolute;font-size:15px;font-weight:900;color:var(--cream);
+  -webkit-text-stroke:1.5px var(--ink);paint-order:stroke fill;
+  pointer-events:none;animation:floatUp .85s ease-out forwards;
+}
+@keyframes floatUp{
+  0%{opacity:0;transform:translate(-50%,0) scale(.7)}
+  25%{opacity:1;transform:translate(-50%,-10px) scale(1.1)}
+  100%{opacity:0;transform:translate(-50%,-42px) scale(1)}
+}
+.burst{
+  position:absolute;border-radius:50%;pointer-events:none;
+  animation:burst .45s ease-out forwards;
+}
+@keyframes burst{
+  0%{opacity:.9;transform:translate(-50%,-50%) scale(.2)}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(2.6)}
+}
+
+#controls{
+  width:100%;height:var(--footer-h);flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:0 12px 6px;
+}
+#btn-finish{flex:1;max-width:240px;height:46px;font-size:16px;}
+#btn-sound{width:46px;height:46px;padding:0;font-size:18px;flex:0 0 auto;}
+
+/* ---------- экран итога ---------- */
+#screen-result{justify-content:flex-start;}
+#result-title{font-size:20px;margin-top:22px;text-align:center;}
+#result-score{font-size:52px;color:var(--orange);margin:6px 0 2px;}
+#result-best{font-size:14px;font-weight:700;color:var(--lime);}
+#result-rank{font-size:13px;font-weight:700;opacity:.85;margin-top:2px;}
+#result-note{font-size:12px;font-weight:700;color:var(--pink);min-height:16px;margin-top:6px;text-align:center;max-width:280px;}
+#result-actions{position:absolute;left:0;right:0;bottom:16px;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 16px;}
+#result-actions button{width:100%;max-width:300px;height:50px;}
+#btn-top-result{height:44px;font-size:14px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ФОН -->
+  <div id="sky">
+    <svg viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <radialGradient id="moonG" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#fff3c4" stop-opacity=".55"/>
+          <stop offset="100%" stop-color="#fff3c4" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="fogG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#7a5aa8" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#7a5aa8" stop-opacity=".35"/>
+        </linearGradient>
+      </defs>
+      <circle class="moon-glow" cx="312" cy="86" r="92" fill="url(#moonG)"/>
+      <circle cx="312" cy="86" r="42" fill="#fff6d5" opacity=".92"/>
+      <circle cx="298" cy="74" r="7" fill="#efe0b4" opacity=".5"/>
+      <circle cx="324" cy="98" r="9" fill="#efe0b4" opacity=".45"/>
+      <circle cx="326" cy="70" r="4.5" fill="#efe0b4" opacity=".4"/>
+      <g fill="#fff" opacity=".55">
+        <circle cx="40" cy="52" r="1.6"/><circle cx="96" cy="30" r="1.2"/><circle cx="150" cy="70" r="1.5"/>
+        <circle cx="212" cy="40" r="1.1"/><circle cx="60" cy="120" r="1.3"/><circle cx="180" cy="140" r="1"/>
+        <circle cx="360" cy="170" r="1.4"/><circle cx="20" cy="200" r="1.1"/>
+      </g>
+      <!-- голые ветки -->
+      <g stroke="#0d0417" stroke-width="5" fill="none" stroke-linecap="round" opacity=".85">
+        <path d="M-6 0 C 40 34, 26 66, 74 78"/>
+        <path d="M40 34 C 62 22, 78 30, 92 18"/>
+        <path d="M26 66 C 44 62, 52 76, 68 74"/>
+        <path d="M406 12 C 366 40, 384 74, 340 92"/>
+        <path d="M366 40 C 348 26, 330 34, 316 22"/>
+      </g>
+      <!-- туман -->
+      <path class="fog" d="M-40 520 C 80 486, 150 546, 250 508 C 330 478, 380 526, 440 500 L440 620 L-40 620 Z" fill="url(#fogG)"/>
+      <!-- летучие мыши -->
+      <g class="bat" transform="translate(0,0)">
+        <g transform="translate(-40,140)" fill="#0d0417">
+          <ellipse cx="0" cy="0" rx="4" ry="5"/>
+          <path class="bat-wing" d="M-3 -1 C -14 -9, -20 -2, -24 2 C -16 1, -10 5, -3 3 Z"/>
+          <path class="bat-wing" d="M3 -1 C 14 -9, 20 -2, 24 2 C 16 1, 10 5, 3 3 Z"/>
+        </g>
+      </g>
+      <g class="bat bat-2">
+        <g transform="translate(-40,232)" fill="#0d0417" opacity=".8">
+          <ellipse cx="0" cy="0" rx="3" ry="4"/>
+          <path class="bat-wing" d="M-2 -1 C -11 -7, -16 -2, -19 2 C -12 1, -8 4, -2 2 Z"/>
+          <path class="bat-wing" d="M2 -1 C 11 -7, 16 -2, 19 2 C 12 1, 8 4, 2 2 Z"/>
+        </g>
+      </g>
+      <g class="bat bat-3">
+        <g transform="translate(-40,86)" fill="#0d0417" opacity=".65">
+          <ellipse cx="0" cy="0" rx="2.5" ry="3.4"/>
+          <path class="bat-wing" d="M-2 -1 C -9 -6, -13 -2, -16 1 C -10 1, -7 3, -2 2 Z"/>
+          <path class="bat-wing" d="M2 -1 C 9 -6, 13 -2, 16 1 C 10 1, 7 3, 2 2 Z"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- ГРАФ ДИНАКУЛА -->
+  <div id="dino-wrap" class="pos-start">
+    <img id="dino-avatar" src="dino.png" alt="Граф Динакула">
+    <div id="dino-name" class="candy">Граф Динакула</div>
+    <div id="speech"></div>
+  </div>
+
+  <!-- ЭКРАН 1: СТАРТ -->
+  <section id="screen-start" class="screen active">
+    <img id="logo" src="assets/logo.png" alt="SPOOKIES">
+    <div id="start-spacer"></div>
+    <div id="bigo-field">
+      <input id="bigo-input" type="text" inputmode="text" autocomplete="off"
+             autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40" placeholder="Твой BIGO ID">
+      <div id="bigo-error"></div>
+      <button id="btn-play" class="candy">Играть</button>
+      <button id="btn-top-toggle" class="ghost">Топ-5</button>
+      <div id="top-panel"></div>
+    </div>
+  </section>
+
+  <!-- ЭКРАН 2: ИГРА -->
+  <section id="screen-game" class="screen">
+    <header id="hud">
+      <div class="hud-left">
+        <div class="hud-row"><span class="hud-label">Очки</span><span id="score-val" class="hud-val candy">0</span></div>
+        <div class="hud-row"><span class="hud-label">Ходы</span><span id="moves-val" class="hud-val candy">30</span></div>
+        <div id="combo-line"></div>
+      </div>
+    </header>
+    <div id="board-area">
+      <div id="board">
+        <div id="cells"></div>
+        <div id="tiles"></div>
+        <div id="fx"></div>
+      </div>
+    </div>
+    <footer id="controls">
+      <button id="btn-finish" class="candy">Закончить</button>
+      <button id="btn-sound" class="ghost" aria-label="Звук">🔇</button>
+    </footer>
+  </section>
+
+  <!-- ЭКРАН 3: ИТОГ -->
+  <section id="screen-result" class="screen">
+    <div id="result-title" class="candy"></div>
+    <div id="result-score" class="candy">0</div>
+    <div id="result-best"></div>
+    <div id="result-rank"></div>
+    <div id="result-note"></div>
+    <div id="result-actions">
+      <button id="btn-save" class="candy">Сохранить результат</button>
+      <button id="btn-again" class="ghost candy">Играть снова</button>
+      <button id="btn-top-result" class="ghost">Топ-5</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — единственное место, где всё крутится
+   ============================================================ */
+const CONFIG = {
+  // адрес бэкенда; null = локальный режим (рейтинг в пределах устройства)
+  API_BASE: null,
+  API_TIMEOUT: 3000,
+
+  // поле
+  grid: {
+    size: 8,          // строго 8×8, менять не рекомендуется — сломает сравнимость результатов
+    gap: 3,           // зазор между тайлами, px
+    padX: 8,          // боковой отступ поля от краёв экрана, px
+    minTile: 34,
+    maxTile: 56
+  },
+
+  // ходы
+  moves: {
+    start: 30,               // ходов в начале сессии
+    cascadeBonusFrom: 3,     // с какого множителя каскада давать бонусный ход
+    bonusPerCascade: 1,      // сколько ходов за каскад
+    bonusPerSpecialCreated: 1, // ходов за КАЖДЫЙ созданный спецэлемент (за срабатывание — не даём)
+    maxBonusPerMove: 3,      // потолок бонуса за один ход игрока
+    maxBonusPerSession: 60,  // жёсткий лимит бонусов на всю сессию → сессия конечна
+    lowThreshold: 5          // с какого числа ходов счётчик пульсирует и Граф предупреждает
+  },
+
+  // очки
+  scoring: {
+    base: { 3: 30, 4: 60, 5: 100 },
+    extraPerTile: 25,     // за каждый тайл сверх пяти
+    specialBonus: 50,     // за срабатывание спецэлемента
+    perBlastTile: 10,     // за каждый тайл, снесённый спецэлементом (вне совпадения)
+    maxMultiplier: 8      // потолок множителя каскада
+  },
+
+  // тайминги анимаций, мс
+  timings: { swap: 200, pop: 240, fall: 280, reject: 260, speech: 3000, idle: 10000 },
+
+  // герой
+  heroName: 'Граф Динакула',
+  heroShort: 'Граф',
+
+  // картинки
+  assets: {
+    dino: 'dino.png',
+    logo: 'assets/logo.png',
+    dir: 'assets/'
+  },
+
+  // 6 базовых типов
+  tiles: [
+    { type: 'skull',     src: 'assets/skull.png' },
+    { type: 'pumpkin',   src: 'assets/pumpkin.png' },
+    { type: 'apple',     src: 'assets/apple.png' },
+    { type: 'candycorn', src: 'assets/candycorn.png' },
+    { type: 'ghost',     src: 'assets/ghost.png' },
+    { type: 'worm',      src: 'assets/worm.png' }
+  ],
+
+  // спецэлементы
+  specials: {
+    'candle-h':  { src: 'assets/candle-h.png',  cls: 'sp-candle' },
+    'candle-v':  { src: 'assets/candle-v.png',  cls: 'sp-candle' },
+    'bomb':      { src: 'assets/bomb.png',      cls: 'sp-bomb' },
+    'cauldron':  { src: 'assets/cauldron.png',  cls: 'sp-cauldron' }
+  },
+
+  // валидация BIGO ID
+  bigoId: { min: 3, max: 30, pattern: /^[A-Za-z0-9_.\-]+$/ },
+
+  sound: { enabledByDefault: false },
+
+  // ---------- реплики Графа ----------
+  dinoLines: {
+    greeting: [
+      '{hero} к вашим услугам!',
+      'Добро пожаловать в сладкий замок!',
+      'Я вампир, но кусаю только конфеты.',
+      'Ночь длинная, сладостей много. Начнём?',
+      'Не бойся, кусаюсь исключительно вежливо.',
+      'Тыквы уже дрожат. Приступай!'
+    ],
+    combo: [
+      'Вот это укус!',
+      'Каскад! Аж клыки звенят.',
+      'Сахарная лавина, обожаю!',
+      'Мой плащ в восторге!',
+      'Даже луна аплодирует.',
+      'Вот за это тебя любят тыквы.'
+    ],
+    special: [
+      'О, новая игрушка!',
+      'Свежий спецэлемент, ещё тёплый.',
+      'Осторожно, оно кусается.',
+      'Аристократично сделано!',
+      'Это будет громко.',
+      'Я такое коллекционирую.'
+    ],
+    idle: [
+      'Эй, я тут не вечный… хотя вечный.',
+      'Тайлы остывают, между прочим.',
+      'Задремал стоя. Твой ход!',
+      'Я подожду. У меня вечность.',
+      'Может, сходим? Я про ход.',
+      'Тыква уснула. Разбуди её.'
+    ],
+    lowMoves: [
+      'Ходов мало, азарта много!',
+      'Финишная прямая, мой дорогой!',
+      'Осталось чуть-чуть. Не дрогни!',
+      'Последние конфеты самые вкусные.',
+      'Соберись, я в тебя верю.',
+      'Занавес близко. Впечатли меня!'
+    ],
+    shuffle: [
+      'Перетасую, как колоду в замке.',
+      'Ходов нет — зову ночной ветер!',
+      'Немного магии, и всё заново.',
+      'Одно движение плаща — и порядок.',
+      'Свежая раздача, прошу!',
+      'Тыквы, по местам!'
+    ],
+    farewell: [
+      '{score} очков — достойно графа!',
+      'Ты собрал {score}. Я впечатлён!',
+      '{score} очков. Замок аплодирует!',
+      'Неплохо: {score}. Возвращайся ночью!',
+      '{score}! Клыки дрожат от восторга.',
+      'Записал: {score}. До новых встреч!'
+    ]
+  },
+
+  // ---------- все тексты интерфейса ----------
+  texts: {
+    playBtn: 'Играть',
+    topBtn: 'Топ-5',
+    finishBtn: 'Закончить',
+    saveBtn: 'Сохранить результат',
+    savingBtn: 'Сохраняю…',
+    savedBtn: 'Результат сохранён',
+    againBtn: 'Играть снова',
+    idPlaceholder: 'Твой BIGO ID',
+    scoreLabel: 'Очки',
+    movesLabel: 'Ходы',
+    resultTitle: 'Ты собрал(а)',
+    resultScoreSuffix: 'очков!',
+    bestLabel: 'Лучший результат:',
+    rankLabel: 'Место в топе:',
+    savedOffline: 'Результат сохранён, рейтинг обновится позже',
+    savedOk: 'Результат сохранён!',
+    topEmpty: 'Пока никто не играл. Будь первым!',
+    comboLabel: 'Каскад ×',
+    errEmpty: 'Введи свой BIGO ID',
+    errCyrillic: 'ID пишется латиницей и цифрами',
+    errChars: 'Можно буквы, цифры и знаки _ . -',
+    errShort: 'ID слишком короткий',
+    errLong: 'ID слишком длинный'
+  }
+};
+
+/* ============================================================
+   Storage — адаптер над localStorage с тихим фолбэком в память
+   ============================================================ */
+const Storage = (() => {
+  let usable = true;
+  const mem = {};
+  try {
+    const probe = '__spookies_probe__';
+    localStorage.setItem(probe, '1');
+    localStorage.removeItem(probe);
+  } catch (e) { usable = false; }
+
+  return {
+    save(key, value) {
+      const raw = JSON.stringify(value);
+      if (usable) {
+        try { localStorage.setItem(key, raw); return true; }
+        catch (e) { usable = false; }
+      }
+      mem[key] = raw;
+      return true;
+    },
+    load(key, fallback) {
+      let raw = null;
+      if (usable) {
+        try { raw = localStorage.getItem(key); }
+        catch (e) { usable = false; }
+      }
+      if (raw === null || raw === undefined) raw = (key in mem) ? mem[key] : null;
+      if (raw === null) return fallback;
+      try { return JSON.parse(raw); } catch (e) { return fallback; }
+    }
+  };
+})();
+
+/* ============================================================
+   Leaderboard — единственная точка связи с сервером
+   ============================================================ */
+const Leaderboard = (() => {
+  const KEY = 'spookies.scores';
+  const sent = new Set(); // sessionId, которые уже ушли
+
+  function all() { return Storage.load(KEY, []); }
+
+  // одна запись на игрока: сравниваем по ключу в нижнем регистре
+  function mergeLocal(entry) {
+    const list = all();
+    const i = list.findIndex(e => e.key === entry.key);
+    if (i >= 0) {
+      if (entry.score > list[i].score) list[i] = Object.assign({}, entry);
+    } else {
+      list.push(Object.assign({}, entry));
+    }
+    list.sort((a, b) => b.score - a.score);
+    Storage.save(KEY, list);
+    return list;
+  }
+
+  async function request(url, options) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CONFIG.API_TIMEOUT);
+    try {
+      const res = await fetch(url, Object.assign({ signal: ctrl.signal }, options || {}));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(timer); }
+  }
+
+  return {
+    // { ok, rank, best, offline }
+    async submit(payload) {
+      const bigoId = payload.bigoId;
+      const key = bigoId.toLowerCase();
+      const entry = { bigoId, key, score: payload.score, playedAt: payload.playedAt };
+      const list = mergeLocal(entry);
+      const mine = list.filter(e => e.key === key).map(e => e.score);
+      const best = mine.length ? Math.max.apply(null, mine) : payload.score;
+      const localRank = list.findIndex(e => e.key === key) + 1;
+
+      if (!CONFIG.API_BASE) return { ok: true, rank: localRank, best, offline: false };
+      if (sent.has(payload.sessionId)) return { ok: true, rank: localRank, best, offline: false };
+
+      try {
+        const data = await request(CONFIG.API_BASE + '/scores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bigoId, key,
+            score: payload.score,
+            playedAt: payload.playedAt,
+            sessionId: payload.sessionId,
+            moves: payload.moves,
+            duration: payload.duration
+          })
+        });
+        sent.add(payload.sessionId);
+        return { ok: true, rank: data.rank != null ? data.rank : localRank,
+                 best: data.best != null ? data.best : best, offline: false };
+      } catch (e) {
+        console.warn('[SPOOKIES] submit не прошёл, результат остался локально:', e);
+        return { ok: false, rank: localRank, best, offline: true };
+      }
+    },
+
+    // [{ bigoId, score, rank }]
+    async top(limit) {
+      limit = limit || 5;
+      const local = all().slice(0, limit).map((e, i) => ({ bigoId: e.bigoId, score: e.score, rank: i + 1 }));
+      if (!CONFIG.API_BASE) return local;
+      try {
+        const data = await request(CONFIG.API_BASE + '/scores/top?limit=' + limit, { method: 'GET' });
+        return Array.isArray(data) ? data : (data.items || local);
+      } catch (e) {
+        console.warn('[SPOOKIES] топ не загрузился, показываю локальный:', e);
+        return local;
+      }
+    }
+  };
+})();
+
+/* ============================================================
+   Assets — предзагрузка и проверка наличия картинок
+   ============================================================ */
+const Assets = (() => {
+  const missing = new Set();
+  function preload(src) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => resolve(true);
+      img.onerror = () => { missing.add(src); resolve(false); };
+      img.src = src;
+    });
+  }
+  return {
+    async init() {
+      const list = CONFIG.tiles.map(t => t.src)
+        .concat(Object.keys(CONFIG.specials).map(k => CONFIG.specials[k].src))
+        .concat([CONFIG.assets.dino, CONFIG.assets.logo]);
+      await Promise.all(list.map(preload));
+      if (missing.size) console.warn('[SPOOKIES] не найдены файлы:', Array.from(missing));
+    },
+    has(src) { return !missing.has(src); }
+  };
+})();
+
+/* ============================================================
+   Sound — минимальный WebAudio, по умолчанию выключен
+   ============================================================ */
+const Sound = (() => {
+  let ctx = null, on = CONFIG.sound.enabledByDefault;
+  function ensure() {
+    if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } }
+    return ctx;
+  }
+  function beep(freq, dur, type, vol) {
+    if (!on) return;
+    const c = ensure(); if (!c) return;
+    try {
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'triangle'; o.frequency.value = freq;
+      g.gain.value = vol || 0.08;
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(); o.stop(c.currentTime + dur);
+    } catch (e) {}
+  }
+  return {
+    toggle() { on = !on; if (on) ensure(); return on; },
+    isOn() { return on; },
+    pop(step) { beep(420 + (step || 0) * 60, 0.12, 'triangle', 0.07); },
+    special() { beep(760, 0.22, 'square', 0.06); },
+    swap() { beep(300, 0.07, 'sine', 0.05); },
+    reject() { beep(150, 0.12, 'sawtooth', 0.05); },
+    shuffle() { beep(220, 0.3, 'sine', 0.06); }
+  };
+})();
+
+/* ============================================================
+   Утилиты
+   ============================================================ */
+const N = CONFIG.grid.size;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const rnd = arr => arr[Math.floor(Math.random() * arr.length)];
+const K = (r, c) => r + ',' + c;
+const unK = k => k.split(',').map(Number);
+function uuid() {
+  if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch (e) {} }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, ch => {
+    const r = Math.random() * 16 | 0;
+    return (ch === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+function srcOfType(type) {
+  const t = CONFIG.tiles.find(x => x.type === type);
+  return t ? t.src : '';
+}
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const el = {
+  app: document.getElementById('app'),
+  dinoWrap: document.getElementById('dino-wrap'),
+  dino: document.getElementById('dino-avatar'),
+  dinoName: document.getElementById('dino-name'),
+  speech: document.getElementById('speech'),
+  screens: {
+    start: document.getElementById('screen-start'),
+    game: document.getElementById('screen-game'),
+    result: document.getElementById('screen-result')
+  },
+  logo: document.getElementById('logo'),
+  input: document.getElementById('bigo-input'),
+  inputError: document.getElementById('bigo-error'),
+  btnPlay: document.getElementById('btn-play'),
+  btnTopToggle: document.getElementById('btn-top-toggle'),
+  topPanel: document.getElementById('top-panel'),
+  hud: document.getElementById('hud'),
+  scoreVal: document.getElementById('score-val'),
+  movesVal: document.getElementById('moves-val'),
+  comboLine: document.getElementById('combo-line'),
+  boardArea: document.getElementById('board-area'),
+  board: document.getElementById('board'),
+  cells: document.getElementById('cells'),
+  tilesLayer: document.getElementById('tiles'),
+  fx: document.getElementById('fx'),
+  btnFinish: document.getElementById('btn-finish'),
+  btnSound: document.getElementById('btn-sound'),
+  resultTitle: document.getElementById('result-title'),
+  resultScore: document.getElementById('result-score'),
+  resultBest: document.getElementById('result-best'),
+  resultRank: document.getElementById('result-rank'),
+  resultNote: document.getElementById('result-note'),
+  btnSave: document.getElementById('btn-save'),
+  btnAgain: document.getElementById('btn-again'),
+  btnTopResult: document.getElementById('btn-top-result')
+};
+
+/* ============================================================
+   Dino — реплики без повтора подряд, одно облачко за раз
+   ============================================================ */
+const Dino = (() => {
+  const last = {};
+  let hideTimer = null, idleTimer = null;
+
+  function pick(cat) {
+    const lines = CONFIG.dinoLines[cat] || [];
+    if (!lines.length) return '';
+    let line, guard = 0;
+    do { line = rnd(lines); guard++; } while (lines.length > 1 && line === last[cat] && guard < 12);
+    last[cat] = line;
+    return line;
+  }
+
+  return {
+    say(cat, vars) {
+      let text = pick(cat);
+      if (!text) return;
+      text = text.replace('{hero}', CONFIG.heroName).replace('{score}', (vars && vars.score) || 0);
+      el.speech.textContent = text;
+      el.speech.classList.add('show');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => el.speech.classList.remove('show'), CONFIG.timings.speech);
+    },
+    hide() { clearTimeout(hideTimer); el.speech.classList.remove('show'); },
+    resetIdle() {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        if (Game.isPlaying() && !Game.isBusy()) { Dino.say('idle'); Dino.resetIdle(); }
+      }, CONFIG.timings.idle);
+    },
+    stopIdle() { clearTimeout(idleTimer); },
+    move(pos) { el.dinoWrap.className = pos; }
+  };
+})();
+
+/* ============================================================
+   Board — модель поля и вся математика match-3
+   ============================================================ */
+let grid = [];         // grid[r][c] = { id, type, special, el } | null
+let nextId = 1;
+let lastSwapKeys = null;
+
+function makeTile(type, special) {
+  return { id: nextId++, type: type, special: special || null, el: null };
+}
+function randomType() { return rnd(CONFIG.tiles).type; }
+
+function buildBoard() {
+  grid = [];
+  for (let r = 0; r < N; r++) {
+    grid[r] = [];
+    for (let c = 0; c < N; c++) {
+      let type, guard = 0;
+      do { type = randomType(); guard++; } while (guard < 30 && createsMatchAt(r, c, type));
+      grid[r][c] = makeTile(type, null);
+    }
+  }
+  if (!hasValidMove()) buildBoard();
+}
+// проверка «не образует ли этот тип готовое совпадение при генерации»
+function createsMatchAt(r, c, type) {
+  const same = (rr, cc) => rr >= 0 && cc >= 0 && rr < N && cc < N && grid[rr] && grid[rr][cc] && grid[rr][cc].type === type;
+  if (same(r, c - 1) && same(r, c - 2)) return true;
+  if (same(r - 1, c) && same(r - 2, c)) return true;
+  return false;
+}
+
+// все прогоны длиной ≥3
+function findRuns() {
+  const runs = [];
+  for (let r = 0; r < N; r++) {
+    let c = 0;
+    while (c < N) {
+      const t = grid[r][c];
+      if (!t) { c++; continue; }
+      let e = c;
+      while (e + 1 < N && grid[r][e + 1] && grid[r][e + 1].type === t.type) e++;
+      const len = e - c + 1;
+      if (len >= 3) {
+        const cells = []; for (let i = c; i <= e; i++) cells.push(K(r, i));
+        runs.push({ dir: 'h', len, type: t.type, cells });
+      }
+      c = e + 1;
+    }
+  }
+  for (let c = 0; c < N; c++) {
+    let r = 0;
+    while (r < N) {
+      const t = grid[r][c];
+      if (!t) { r++; continue; }
+      let e = r;
+      while (e + 1 < N && grid[e + 1][c] && grid[e + 1][c].type === t.type) e++;
+      const len = e - r + 1;
+      if (len >= 3) {
+        const cells = []; for (let i = r; i <= e; i++) cells.push(K(i, c));
+        runs.push({ dir: 'v', len, type: t.type, cells });
+      }
+      r = e + 1;
+    }
+  }
+  return runs;
+}
+
+// прогоны, пересекающиеся по клетке, объединяем в группу (нужно для L/T)
+function findGroups() {
+  const runs = findRuns();
+  const used = new Array(runs.length).fill(false);
+  const groups = [];
+  for (let i = 0; i < runs.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    const g = { type: runs[i].type, runs: [runs[i]], cells: new Set(runs[i].cells) };
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let j = 0; j < runs.length; j++) {
+        if (used[j] || runs[j].type !== g.type) continue;
+        if (runs[j].cells.some(k => g.cells.has(k))) {
+          used[j] = true; g.runs.push(runs[j]);
+          runs[j].cells.forEach(k => g.cells.add(k));
+          changed = true;
+        }
+      }
+    }
+    groups.push(g);
+  }
+  return groups;
+}
+
+// какой спецэлемент рождает эта группа
+function decideSpecial(g) {
+  const hasH = g.runs.some(r => r.dir === 'h');
+  const hasV = g.runs.some(r => r.dir === 'v');
+  const longest = g.runs.reduce((a, b) => (b.len > a.len ? b : a));
+  if (hasH && hasV) return 'bomb';          // L или T
+  if (longest.len >= 5) return 'cauldron';  // 5 в ряд
+  if (longest.len === 4) return longest.dir === 'h' ? 'candle-h' : 'candle-v';
+  return null;
+}
+// где родится спецэлемент: под пальцем игрока, иначе — в середине прогона
+function specialCell(g) {
+  if (lastSwapKeys) for (const k of lastSwapKeys) if (g.cells.has(k)) return k;
+  const longest = g.runs.reduce((a, b) => (b.len > a.len ? b : a));
+  return longest.cells[Math.floor(longest.cells.length / 2)];
+}
+
+function baseScore(n) {
+  if (n <= 3) return CONFIG.scoring.base[3];
+  if (n === 4) return CONFIG.scoring.base[4];
+  return CONFIG.scoring.base[5] + (n - 5) * CONFIG.scoring.extraPerTile;
+}
+
+function mostCommonType() {
+  const count = {};
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const t = grid[r][c];
+    if (t && !t.special) count[t.type] = (count[t.type] || 0) + 1;
+  }
+  let best = null, max = -1;
+  for (const k in count) if (count[k] > max) { max = count[k]; best = k; }
+  return best || randomType();
+}
+
+// раскрытие цепочки: спецэлементы в наборе срабатывают и добавляют свои клетки
+function expand(seed) {
+  const removal = new Set();
+  const activated = [];
+  const queue = Array.from(seed);
+  while (queue.length) {
+    const key = queue.pop();
+    if (removal.has(key)) continue;
+    const [r, c] = unK(key);
+    if (r < 0 || c < 0 || r >= N || c >= N) continue;
+    const t = grid[r][c];
+    if (!t) continue;
+    removal.add(key);
+    if (t.special) {
+      activated.push({ r, c, special: t.special, type: t.type });
+      areaOf(t.special, r, c, t.type).forEach(k => { if (!removal.has(k)) queue.push(k); });
+    }
+  }
+  return { removal, activated };
+}
+
+function areaOf(special, r, c, type) {
+  const out = [];
+  if (special === 'candle-h') { for (let i = 0; i < N; i++) out.push(K(r, i)); }
+  else if (special === 'candle-v') { for (let i = 0; i < N; i++) out.push(K(i, c)); }
+  else if (special === 'bomb') {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const rr = r + dr, cc = c + dc;
+      if (rr >= 0 && cc >= 0 && rr < N && cc < N) out.push(K(rr, cc));
+    }
+  } else if (special === 'cauldron') {
+    // котёл сам по себе (в каскаде) утягивает самый частый тип
+    const target = mostCommonType();
+    for (let rr = 0; rr < N; rr++) for (let cc = 0; cc < N; cc++) {
+      const t = grid[rr][cc];
+      if (t && !t.special && t.type === target) out.push(K(rr, cc));
+    }
+  }
+  return out;
+}
+
+function hasValidMove() {
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const t = grid[r][c];
+    if (t && t.special) return true; // спецэлемент всегда можно активировать свайпом
+  }
+  const dirs = [[0, 1], [1, 0]];
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    for (const d of dirs) {
+      const r2 = r + d[0], c2 = c + d[1];
+      if (r2 >= N || c2 >= N) continue;
+      swapModel(r, c, r2, c2);
+      const ok = findRuns().length > 0;
+      swapModel(r, c, r2, c2);
+      if (ok) return true;
+    }
+  }
+  return false;
+}
+function swapModel(r1, c1, r2, c2) {
+  const t = grid[r1][c1]; grid[r1][c1] = grid[r2][c2]; grid[r2][c2] = t;
+}
+
+/* ============================================================
+   Render — размеры, отрисовка, анимации
+   ============================================================ */
+let TILE = 40;
+
+function layoutSize() {
+  const h = el.app.clientHeight || 600;
+  const headerH = Math.max(76, Math.min(112, Math.round(h * 0.18)));
+  document.documentElement.style.setProperty('--header-h', headerH + 'px');
+
+  const areaW = el.boardArea.clientWidth || el.app.clientWidth;
+  const areaH = el.boardArea.clientHeight || 300;
+  const gap = CONFIG.grid.gap, pad = CONFIG.grid.padX;
+
+  const byW = Math.floor((areaW - 2 * pad - (N + 1) * gap) / N);
+  const byH = Math.floor((areaH - (N + 1) * gap - 8) / N);
+  TILE = Math.max(CONFIG.grid.minTile, Math.min(CONFIG.grid.maxTile, Math.min(byW, byH)));
+
+  document.documentElement.style.setProperty('--tile', TILE + 'px');
+  document.documentElement.style.setProperty('--gap', gap + 'px');
+  const side = N * TILE + (N - 1) * gap + 2 * gap;
+  el.board.style.width = side + 'px';
+  el.board.style.height = side + 'px';
+  drawCells();
+  layoutTiles(false);
+}
+
+function pos(i) { return i * (TILE + CONFIG.grid.gap); }
+
+function drawCells() {
+  el.cells.innerHTML = '';
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const d = document.createElement('div');
+    d.className = 'cell';
+    d.style.transform = 'translate3d(' + pos(c) + 'px,' + pos(r) + 'px,0)';
+    el.cells.appendChild(d);
+  }
+}
+
+function createTileEl(tile, r, c) {
+  const d = document.createElement('div');
+  d.className = 'tile';
+  d.style.transform = 'translate3d(' + pos(c) + 'px,' + pos(r) + 'px,0)';
+  const inner = document.createElement('div');
+  inner.className = 'tile-inner';
+  const img = document.createElement('img');
+  img.alt = '';
+  inner.appendChild(img);
+  d.appendChild(inner);
+  tile.el = d;
+  el.tilesLayer.appendChild(d);
+  paintTile(tile);
+  return d;
+}
+
+function paintTile(tile) {
+  const img = tile.el.querySelector('img');
+  tile.el.classList.remove('special', 'sp-candle', 'sp-bomb', 'sp-cauldron', 'sp-missing');
+  if (tile.special) {
+    const cfg = CONFIG.specials[tile.special];
+    tile.el.classList.add('special');
+    if (cfg && Assets.has(cfg.src)) {
+      img.src = cfg.src;
+      tile.el.classList.add(cfg.cls);
+    } else {
+      // файла нет — обычный тайл со свечением, предупреждение уже в консоли
+      img.src = srcOfType(tile.type);
+      tile.el.classList.add('sp-missing');
+      console.warn('[SPOOKIES] нет картинки спецэлемента', tile.special, '— показываю тайл со свечением');
+    }
+  } else {
+    img.src = srcOfType(tile.type);
+  }
+}
+
+function layoutTiles(animate) {
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const t = grid[r][c];
+    if (!t) continue;
+    if (!t.el) createTileEl(t, r, c);
+    if (!animate) t.el.style.transition = 'none';
+    t.el.style.transform = 'translate3d(' + pos(c) + 'px,' + pos(r) + 'px,0)';
+    if (!animate) { void t.el.offsetHeight; t.el.style.transition = ''; }
+  }
+}
+
+function renderAll() {
+  el.tilesLayer.innerHTML = '';
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const t = grid[r][c];
+    if (t) { t.el = null; createTileEl(t, r, c); }
+  }
+}
+
+function floatText(r, c, text) {
+  const d = document.createElement('div');
+  d.className = 'float-score';
+  d.textContent = text;
+  d.style.left = (CONFIG.grid.gap + pos(c) + TILE / 2) + 'px';
+  d.style.top = (CONFIG.grid.gap + pos(r) + TILE / 4) + 'px';
+  el.fx.appendChild(d);
+  setTimeout(() => d.remove(), 900);
+}
+function burst(r, c, color) {
+  const d = document.createElement('div');
+  d.className = 'burst';
+  d.style.left = (CONFIG.grid.gap + pos(c) + TILE / 2) + 'px';
+  d.style.top = (CONFIG.grid.gap + pos(r) + TILE / 2) + 'px';
+  d.style.width = TILE + 'px'; d.style.height = TILE + 'px';
+  d.style.background = 'radial-gradient(circle,' + color + ' 0%, transparent 70%)';
+  el.fx.appendChild(d);
+  setTimeout(() => d.remove(), 470);
+}
+
+/* ============================================================
+   Game — ходы, каскады, очки, экраны
+   ============================================================ */
+const Game = (() => {
+  let score = 0, shownScore = 0, moves = 0, busy = false, playing = false;
+  let bonusUsed = 0, movesMade = 0, startedAt = 0, sessionId = null;
+  let bigoId = '', scoreAnim = null;
+
+  /* ---------- счёт с набегающими цифрами ---------- */
+  function addScore(points) {
+    score += points;
+    if (scoreAnim) cancelAnimationFrame(scoreAnim);
+    const from = shownScore, to = score, t0 = performance.now(), dur = 420;
+    const step = now => {
+      const k = Math.min(1, (now - t0) / dur);
+      shownScore = Math.round(from + (to - from) * (1 - Math.pow(1 - k, 3)));
+      el.scoreVal.textContent = shownScore;
+      if (k < 1) scoreAnim = requestAnimationFrame(step);
+    };
+    scoreAnim = requestAnimationFrame(step);
+  }
+
+  function setMoves(v) {
+    moves = Math.max(0, v);
+    el.movesVal.textContent = moves;
+    el.movesVal.classList.toggle('low', moves <= CONFIG.moves.lowThreshold);
+  }
+
+  function showCombo(mult) {
+    if (mult < 2) { el.comboLine.classList.remove('show'); return; }
+    el.comboLine.textContent = CONFIG.texts.comboLabel + mult;
+    el.comboLine.classList.add('show');
+    clearTimeout(showCombo._t);
+    showCombo._t = setTimeout(() => el.comboLine.classList.remove('show'), 1400);
+  }
+
+  function grantBonus(n) {
+    if (n <= 0) return 0;
+    const left = CONFIG.moves.maxBonusPerSession - bonusUsed;
+    const give = Math.max(0, Math.min(n, CONFIG.moves.maxBonusPerMove, left));
+    if (give > 0) { bonusUsed += give; setMoves(moves + give); }
+    return give;
+  }
+
+  /* ---------- удаление и гравитация ---------- */
+  async function popCells(keys, mult) {
+    const els = [];
+    keys.forEach(k => {
+      const [r, c] = unK(k);
+      const t = grid[r][c];
+      if (!t) return;
+      t.el.classList.add('pop');
+      els.push(t.el);
+      grid[r][c] = null;
+    });
+    Sound.pop(mult);
+    await wait(CONFIG.timings.pop);
+    els.forEach(e => e.remove());
+  }
+
+  async function gravityAndRefill() {
+    const fresh = [];
+    for (let c = 0; c < N; c++) {
+      let write = N - 1;
+      for (let r = N - 1; r >= 0; r--) {
+        if (grid[r][c]) {
+          if (write !== r) { grid[write][c] = grid[r][c]; grid[r][c] = null; }
+          write--;
+        }
+      }
+      let spawn = -1;
+      for (let r = write; r >= 0; r--) {
+        const t = makeTile(randomType(), null);
+        grid[r][c] = t;
+        createTileEl(t, spawn, c);
+        fresh.push(t);
+        spawn--;
+      }
+    }
+    if (fresh.length) void el.tilesLayer.offsetHeight; // форсируем reflow, чтобы падение анимировалось
+    layoutTiles(true);
+    await wait(CONFIG.timings.fall);
+  }
+
+  /* ---------- главный цикл хода ---------- */
+  async function runTurn(forcedRemoval) {
+    let wave = 0, maxWave = 0, specialsCreated = 0;
+    let pending = forcedRemoval || null;
+
+    while (true) {
+      let seeds, plans = [], waveScore = 0, matchedCount = 0;
+
+      if (pending) { seeds = pending; pending = null; }
+      else {
+        const groups = findGroups();
+        if (!groups.length) break;
+        seeds = new Set();
+        for (const g of groups) {
+          const sp = decideSpecial(g);
+          if (sp) {
+            const key = specialCell(g);
+            plans.push({ key, special: sp, type: g.type });
+          }
+          waveScore += baseScore(g.cells.size);
+          matchedCount += g.cells.size;
+          g.cells.forEach(k => seeds.add(k));
+        }
+      }
+
+      wave++; maxWave = wave;
+      const mult = Math.min(wave, CONFIG.scoring.maxMultiplier);
+
+      const { removal, activated } = expand(seeds);
+      waveScore += activated.length * CONFIG.scoring.specialBonus;
+      // тайлы, снесённые взрывом, тоже приносят очки
+      waveScore += Math.max(0, removal.size - matchedCount) * CONFIG.scoring.perBlastTile;
+
+      // клетки, где родится спецэлемент, не лопаются
+      const planKeys = new Set(plans.map(p => p.key));
+      const toPop = new Set();
+      removal.forEach(k => { if (!planKeys.has(k)) toPop.add(k); });
+
+      // визуал: всплывающие очки и вспышки от спецэлементов
+      const gained = waveScore * mult;
+      if (gained > 0) {
+        const first = toPop.values().next().value || plans[0] && plans[0].key;
+        if (first) { const [fr, fc] = unK(first); floatText(fr, fc, '+' + gained); }
+        addScore(gained);
+      }
+      activated.forEach(a => {
+        const color = a.special === 'cauldron' ? 'rgba(154,205,50,.9)'
+                    : a.special === 'bomb' ? 'rgba(255,60,20,.95)' : 'rgba(255,117,24,.9)';
+        burst(a.r, a.c, color);
+      });
+      if (activated.length) Sound.special();
+      if (mult >= 2) showCombo(mult);
+      if (mult >= 3) Dino.say('combo');
+
+      await popCells(toPop, wave);
+
+      // рождение спецэлементов
+      for (const p of plans) {
+        const [r, c] = unK(p.key);
+        let t = grid[r][c];
+        if (!t) { t = makeTile(p.type, null); grid[r][c] = t; createTileEl(t, r, c); }
+        t.type = p.type; t.special = p.special;
+        paintTile(t);
+        t.el.classList.remove('flash', 'flash-strong');
+        void t.el.offsetHeight;
+        // бомбу показываем ярче: её силуэт совпадает с обычной тыквой
+        t.el.classList.add(p.special === 'bomb' ? 'flash-strong' : 'flash');
+        specialsCreated++;
+      }
+      if (plans.length) { Dino.say('special'); Sound.special(); }
+
+      await gravityAndRefill();
+    }
+
+    // бонусные ходы: за глубокий каскад и за созданные спецэлементы
+    let bonus = 0;
+    if (maxWave >= CONFIG.moves.cascadeBonusFrom) bonus += CONFIG.moves.bonusPerCascade;
+    bonus += specialsCreated * CONFIG.moves.bonusPerSpecialCreated;
+    grantBonus(bonus);
+  }
+
+  /* ---------- комбинации двух спецэлементов ---------- */
+  function comboRemoval(r1, c1, r2, c2) {
+    const a = grid[r1][c1], b = grid[r2][c2];
+    const set = new Set([K(r1, c1), K(r2, c2)]);
+    const isCandle = s => s === 'candle-h' || s === 'candle-v';
+
+    // котёл + котёл — чистое поле
+    if (a.special === 'cauldron' && b.special === 'cauldron') {
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) set.add(K(r, c));
+      return set;
+    }
+    // котёл + спецэлемент — все тайлы самого частого типа становятся этим спецом
+    if (a.special === 'cauldron' || b.special === 'cauldron') {
+      const other = a.special === 'cauldron' ? b : a;
+      if (other.special) {
+        const target = mostCommonType();
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+          const t = grid[r][c];
+          if (t && !t.special && t.type === target) { t.special = other.special; paintTile(t); set.add(K(r, c)); }
+        }
+      } else {
+        // котёл + обычный тайл — утягивает весь его тип
+        for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+          const t = grid[r][c];
+          if (t && !t.special && t.type === other.type) set.add(K(r, c));
+        }
+      }
+      return set;
+    }
+    // свеча + бомба — три строки и три столбца
+    if ((isCandle(a.special) && b.special === 'bomb') || (a.special === 'bomb' && isCandle(b.special))) {
+      for (let d = -1; d <= 1; d++) for (let i = 0; i < N; i++) {
+        if (r1 + d >= 0 && r1 + d < N) set.add(K(r1 + d, i));
+        if (c1 + d >= 0 && c1 + d < N) set.add(K(i, c1 + d));
+      }
+      return set;
+    }
+    // бомба + бомба — область 5×5
+    if (a.special === 'bomb' && b.special === 'bomb') {
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+        const rr = r1 + dr, cc = c1 + dc;
+        if (rr >= 0 && cc >= 0 && rr < N && cc < N) set.add(K(rr, cc));
+      }
+      return set;
+    }
+    // свеча + свеча — крест (получается сам из раскрытия цепочки)
+    return set;
+  }
+
+  /* ---------- обмен по свайпу ---------- */
+  async function trySwap(r1, c1, r2, c2) {
+    if (busy || !playing || moves <= 0) return;
+    if (r2 < 0 || c2 < 0 || r2 >= N || c2 >= N) return;
+    const a = grid[r1][c1], b = grid[r2][c2];
+    if (!a || !b) return;
+
+    busy = true;
+    Dino.resetIdle();
+    lastSwapKeys = [K(r1, c1), K(r2, c2)];
+
+    swapModel(r1, c1, r2, c2);
+    layoutTiles(true);
+    Sound.swap();
+    await wait(CONFIG.timings.swap);
+
+    const specialInvolved = !!(a.special || b.special);
+
+    if (specialInvolved) {
+      // свайп со спецэлементом срабатывает всегда — это не «неудачный ход»
+      setMoves(moves - 1); movesMade++;
+      const removal = comboRemoval(r1, c1, r2, c2);
+      await runTurn(removal);
+    } else {
+      if (!findRuns().length) {
+        // отказ: возвращаем на место
+        swapModel(r1, c1, r2, c2);
+        layoutTiles(true);
+        [grid[r1][c1], grid[r2][c2]].forEach(t => {
+          if (!t) return;
+          t.el.classList.add('reject');
+          setTimeout(() => t.el.classList.remove('reject'), CONFIG.timings.reject);
+        });
+        Sound.reject();
+        await wait(CONFIG.timings.reject);
+        lastSwapKeys = null;
+        busy = false;
+        return;
+      }
+      setMoves(moves - 1); movesMade++;
+      await runTurn(null);
+    }
+
+    lastSwapKeys = null;
+
+    // тупика не бывает: перемешиваем
+    if (!hasValidMove()) await shuffleBoard();
+
+    if (moves === CONFIG.moves.lowThreshold) Dino.say('lowMoves');
+    busy = false;
+
+    if (moves <= 0) { await wait(400); finish(); }
+  }
+
+  async function shuffleBoard() {
+    Dino.say('shuffle'); Sound.shuffle();
+    el.tilesLayer.style.transition = 'transform .25s ease, opacity .25s ease';
+    el.tilesLayer.style.transform = 'scale(.86) rotate(-3deg)';
+    el.tilesLayer.style.opacity = '.4';
+    await wait(260);
+
+    const types = [];
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c]) types.push(grid[r][c].type);
+    let guard = 0;
+    do {
+      for (let i = types.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = types[i]; types[i] = types[j]; types[j] = t;
+      }
+      let i = 0;
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c]) grid[r][c].type = types[i++];
+      guard++;
+    } while (guard < 25 && (findRuns().length > 0 || !hasValidMove()));
+
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (grid[r][c]) paintTile(grid[r][c]);
+    el.tilesLayer.style.transform = 'scale(1) rotate(0)';
+    el.tilesLayer.style.opacity = '1';
+    await wait(280);
+    el.tilesLayer.style.transition = '';
+  }
+
+  /* ---------- ввод: тап и свайп ---------- */
+  function bindInput() {
+    let startX = 0, startY = 0, startR = -1, startC = -1, active = false, fired = false;
+
+    function cellFromEvent(e) {
+      const rect = el.tilesLayer.getBoundingClientRect();
+      const x = e.clientX - rect.left, y = e.clientY - rect.top;
+      const step = TILE + CONFIG.grid.gap;
+      const c = Math.floor(x / step), r = Math.floor(y / step);
+      if (r < 0 || c < 0 || r >= N || c >= N) return null;
+      return { r, c };
+    }
+
+    el.board.addEventListener('pointerdown', e => {
+      if (busy || !playing) return;
+      const cell = cellFromEvent(e);
+      if (!cell) return;
+      active = true; fired = false;
+      startX = e.clientX; startY = e.clientY; startR = cell.r; startC = cell.c;
+      const t = grid[startR][startC];
+      if (t) t.el.classList.add('picked');
+      Dino.resetIdle();
+    });
+
+    function release() {
+      active = false;
+      const t = startR >= 0 && grid[startR] && grid[startR][startC];
+      if (t && t.el) t.el.classList.remove('picked');
+      startR = startC = -1;
+    }
+
+    el.board.addEventListener('pointermove', e => {
+      if (!active || fired) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      fired = true;
+      // направление — по большей оси; диагональ трактуем как ближайшую сторону
+      let dr = 0, dc = 0;
+      if (Math.abs(dx) >= Math.abs(dy)) dc = dx > 0 ? 1 : -1;
+      else dr = dy > 0 ? 1 : -1;
+      const r1 = startR, c1 = startC;
+      release();
+      trySwap(r1, c1, r1 + dr, c1 + dc);
+    });
+
+    el.board.addEventListener('pointerup', release);
+    el.board.addEventListener('pointercancel', release);
+    el.board.addEventListener('pointerleave', release);
+    // блокируем скролл страницы жестом по полю
+    el.board.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  }
+
+  /* ---------- сессия ---------- */
+  function start(id) {
+    bigoId = id;
+    score = 0; shownScore = 0; bonusUsed = 0; movesMade = 0;
+    sessionId = uuid(); startedAt = Date.now();
+    el.scoreVal.textContent = '0';
+    setMoves(CONFIG.moves.start);
+    el.comboLine.classList.remove('show');
+    playing = true; busy = false;
+
+    UI.show('game');
+    Dino.move('pos-game');
+    layoutSize();
+    buildBoard();
+    renderAll();
+    layoutTiles(false);
+    Dino.say('greeting');
+    Dino.resetIdle();
+  }
+
+  function finish() {
+    playing = false;
+    Dino.stopIdle();
+    const duration = Math.round((Date.now() - startedAt) / 1000);
+    UI.showResult({
+      bigoId, score, sessionId,
+      moves: movesMade,
+      duration,
+      playedAt: new Date().toISOString()
+    });
+  }
+
+  return {
+    start, finish, bindInput,
+    isBusy: () => busy,
+    isPlaying: () => playing,
+    getScore: () => score
+  };
+})();
+
+/* ============================================================
+   UI — экраны, валидация ID, топ-5
+   ============================================================ */
+const UI = (() => {
+  const ID_KEY = 'spookies.bigoId';
+  let lastResult = null, saving = false, saved = false;
+
+  // нормализация: срезаем «ID:», убираем пробелы
+  function normalizeId(raw) {
+    let v = String(raw || '');
+    v = v.replace(/^\s*id\s*[:：]?\s*/i, '');
+    v = v.replace(/[\s\u00a0]/g, '');
+    return v;
+  }
+  function validateId(raw) {
+    const v = normalizeId(raw);
+    if (!v) return { ok: false, error: CONFIG.texts.errEmpty, value: '' };
+    if (/[\u0400-\u04FF]/.test(v)) return { ok: false, error: CONFIG.texts.errCyrillic, value: v };
+    if (!CONFIG.bigoId.pattern.test(v)) return { ok: false, error: CONFIG.texts.errChars, value: v };
+    if (v.length < CONFIG.bigoId.min) return { ok: false, error: CONFIG.texts.errShort, value: v };
+    if (v.length > CONFIG.bigoId.max) return { ok: false, error: CONFIG.texts.errLong, value: v };
+    return { ok: true, error: '', value: v };
+  }
+
+  function show(name) {
+    for (const k in el.screens) el.screens[k].classList.toggle('active', k === name);
+  }
+
+  async function renderTop(container) {
+    container.innerHTML = '<div class="top-empty">…</div>';
+    const list = await Leaderboard.top(5);
+    if (!list.length) { container.innerHTML = '<div class="top-empty">' + CONFIG.texts.topEmpty + '</div>'; return; }
+    container.innerHTML = list.map(e =>
+      '<div class="top-row"><span class="top-rank">' + e.rank + '</span>' +
+      '<span class="top-id"></span><span class="top-score">' + e.score + '</span></div>'
+    ).join('');
+    // ID вставляем текстом, чтобы не ловить разметку из чужого ввода
+    const nodes = container.querySelectorAll('.top-id');
+    list.forEach((e, i) => { if (nodes[i]) nodes[i].textContent = e.bigoId; });
+  }
+
+  function showResult(data) {
+    lastResult = data; saved = false; saving = false;
+    show('result');
+    Dino.move('pos-result');
+    el.resultTitle.textContent = CONFIG.texts.resultTitle;
+    el.resultScore.textContent = data.score;
+    const stored = Storage.load('spookies.best.' + data.bigoId.toLowerCase(), 0);
+    const best = Math.max(stored, data.score);
+    Storage.save('spookies.best.' + data.bigoId.toLowerCase(), best);
+    el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + best;
+    el.resultRank.textContent = '';
+    el.resultNote.textContent = '';
+    el.btnSave.disabled = false;
+    el.btnSave.textContent = CONFIG.texts.saveBtn;
+    Dino.say('farewell', { score: data.score });
+  }
+
+  async function saveResult() {
+    if (!lastResult || saving || saved) return;
+    saving = true;
+    el.btnSave.disabled = true;
+    el.btnSave.textContent = CONFIG.texts.savingBtn;
+    const res = await Leaderboard.submit(lastResult);
+    saving = false; saved = true;
+    el.btnSave.textContent = CONFIG.texts.savedBtn;
+    el.resultNote.textContent = res.offline ? CONFIG.texts.savedOffline : CONFIG.texts.savedOk;
+    if (res.rank) el.resultRank.textContent = CONFIG.texts.rankLabel + ' ' + res.rank;
+    if (res.best) el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + res.best;
+  }
+
+  function bind() {
+    // подставляем сохранённый ID
+    const savedId = Storage.load(ID_KEY, '');
+    if (savedId) el.input.value = savedId;
+    el.btnPlay.disabled = !validateId(el.input.value).ok;
+
+    el.input.addEventListener('input', () => {
+      const v = validateId(el.input.value);
+      el.inputError.textContent = el.input.value ? v.error : '';
+      el.btnPlay.disabled = !v.ok;
+    });
+    el.input.addEventListener('blur', () => {
+      const v = validateId(el.input.value);
+      if (v.value) el.input.value = v.value; // показываем нормализованный вид
+    });
+
+    el.btnPlay.addEventListener('click', () => {
+      const v = validateId(el.input.value);
+      if (!v.ok) { el.inputError.textContent = v.error; return; }
+      el.input.value = v.value;
+      Storage.save(ID_KEY, v.value);
+      el.input.blur();
+      Game.start(v.value);
+    });
+
+    el.btnTopToggle.addEventListener('click', () => {
+      const open = el.topPanel.classList.toggle('open');
+      if (open) renderTop(el.topPanel);
+    });
+
+    el.btnFinish.addEventListener('click', () => { if (Game.isPlaying()) Game.finish(); });
+
+    el.btnSound.addEventListener('click', () => {
+      const on = Sound.toggle();
+      el.btnSound.textContent = on ? '🔊' : '🔇';
+    });
+
+    el.btnSave.addEventListener('click', saveResult);
+
+    el.btnAgain.addEventListener('click', () => {
+      const id = Storage.load(ID_KEY, '');
+      Game.start(id || lastResult.bigoId);
+    });
+
+    el.btnTopResult.addEventListener('click', () => {
+      let panel = document.getElementById('top-panel-result');
+      if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'top-panel-result';
+        panel.className = 'open';
+        panel.style.cssText = 'width:100%;max-width:300px;background:rgba(0,0,0,.32);border:2px solid rgba(255,255,255,.14);border-radius:14px;padding:8px 10px;';
+        el.resultNote.after(panel);
+      }
+      renderTop(panel);
+    });
+
+    // глобальные запреты жестов
+    document.addEventListener('gesturestart', e => e.preventDefault());
+    document.addEventListener('contextmenu', e => e.preventDefault());
+    document.addEventListener('dblclick', e => e.preventDefault());
+  }
+
+  return { show, showResult, bind, renderTop };
+})();
+
+/* ============================================================
+   Старт
+   ============================================================ */
+(async function init() {
+  el.dino.src = CONFIG.assets.dino;
+  el.logo.src = CONFIG.assets.logo;
+  el.dinoName.textContent = CONFIG.heroName;
+  el.input.placeholder = CONFIG.texts.idPlaceholder;
+  el.btnPlay.textContent = CONFIG.texts.playBtn;
+  el.btnTopToggle.textContent = CONFIG.texts.topBtn;
+  el.btnFinish.textContent = CONFIG.texts.finishBtn;
+  el.btnSave.textContent = CONFIG.texts.saveBtn;
+  el.btnAgain.textContent = CONFIG.texts.againBtn;
+  el.btnTopResult.textContent = CONFIG.texts.topBtn;
+  el.btnSound.textContent = Sound.isOn() ? '🔊' : '🔇';
+
+  await Assets.init();
+
+  Dino.move('pos-start');
+  Dino.say('greeting');
+  UI.bind();
+  Game.bindInput();
+  layoutSize();
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(layoutSize, 120);
+  });
+  window.addEventListener('orientationchange', () => setTimeout(layoutSize, 250));
+})();
+</script>
+</body>
+</html>
