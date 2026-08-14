@@ -1185,6 +1185,7 @@ function showFallback(tile) {
 
 function layoutTiles(animate) {
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (!grid[r]) continue;            // поле ещё не построено — просто нечего раскладывать
     const t = grid[r][c];
     if (!t) continue;
     if (!t.el) createTileEl(t, r, c);
@@ -1197,6 +1198,7 @@ function layoutTiles(animate) {
 function renderAll() {
   el.tilesLayer.innerHTML = '';
   for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    if (!grid[r]) continue;
     const t = grid[r][c];
     if (t) { t.el = null; createTileEl(t, r, c); }
   }
@@ -1581,10 +1583,15 @@ const Game = (() => {
 
     UI.show('game');
     Dino.move('pos-game');
-    layoutSize();
-    buildBoard();
-    renderAll();
-    layoutTiles(false);
+    try {
+      layoutSize();
+      buildBoard();
+      renderAll();
+      layoutTiles(false);
+    } catch (e) {
+      console.error('[SPOOKIES] сбой при построении поля:', e);
+      buildBoard(); renderAll(); layoutTiles(false);
+    }
     Dino.say('greeting');
     Dino.resetIdle();
   }
