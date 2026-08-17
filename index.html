@@ -61,22 +61,49 @@ html,body{
 /* ============================================================
    ФОН: ночное небо, луна, ветки, мыши, туман
    ============================================================ */
-#sky{position:absolute;inset:0;z-index:0;pointer-events:none;}
-#sky svg{width:100%;height:100%;display:block;}
-.moon-glow{animation:moonPulse 7s ease-in-out infinite;transform-origin:center;}
-@keyframes moonPulse{0%,100%{opacity:.55}50%{opacity:.8}}
-.bat{animation:batFly 14s linear infinite;}
-.bat-2{animation-duration:19s;animation-delay:-6s;}
-.bat-3{animation-duration:24s;animation-delay:-12s;}
-@keyframes batFly{
-  0%{transform:translate(-40px,0)}
-  50%{transform:translate(220px,-18px)}
-  100%{transform:translate(480px,4px)}
+#sky{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  background-color:var(--bg-1);
+  /* картинка подставляется из CONFIG.assets.bg; градиент — запасной слой,
+     он же виден, если bg.webp не загрузился */
+  background-image:linear-gradient(180deg,var(--bg-1),var(--bg-2));
+  background-size:cover;background-position:center;background-repeat:no-repeat;
 }
-.bat-wing{animation:batWing 0.5s ease-in-out infinite alternate;transform-origin:center;}
-@keyframes batWing{from{transform:scaleY(1)}to{transform:scaleY(.55)}}
-.fog{animation:fogDrift 22s ease-in-out infinite alternate;}
-@keyframes fogDrift{from{transform:translateX(-20px)}to{transform:translateX(20px)}}
+#sky svg{width:100%;height:100%;display:block;}
+
+/* ---------- летучие мыши ----------
+   Три независимых слоя: горизонтальный пролёт, вертикальное покачивание
+   и смена кадров силуэта. Периоды у слоёв разные, поэтому траектория
+   не читается как зацикленная. */
+.bat{animation:batFly 15s ease-in-out infinite;}
+.bat-2{animation-duration:21s;animation-delay:-7s;}
+.bat-3{animation-duration:27s;animation-delay:-15s;}
+@keyframes batFly{from{transform:translateX(-60px)}to{transform:translateX(470px)}}
+
+.bob{animation:batBob 3.6s ease-in-out infinite;}
+.bat-2 .bob{animation-duration:2.9s;animation-delay:-1.1s;}
+.bat-3 .bob{animation-duration:4.4s;animation-delay:-2.3s;}
+@keyframes batBob{
+  0%{transform:translateY(0)}
+  25%{transform:translateY(-8px)}
+  50%{transform:translateY(3px)}
+  75%{transform:translateY(-11px)}
+  100%{transform:translateY(0)}
+}
+
+/* кадры взмаха: вверх → в стороны → вниз → в стороны */
+.fr{animation-duration:.44s;animation-iteration-count:infinite;animation-timing-function:steps(1,end);}
+.bat-2 .fr{animation-duration:.36s;animation-delay:-.12s;}
+.bat-3 .fr{animation-duration:.52s;animation-delay:-.25s;}
+.fr-up{animation-name:frUp;}
+.fr-mid{animation-name:frMid;}
+.fr-down{animation-name:frDown;}
+@keyframes frUp  {0%{opacity:1}25%{opacity:0}100%{opacity:0}}
+@keyframes frMid {0%{opacity:0}25%{opacity:1}50%{opacity:0}75%{opacity:1}100%{opacity:1}}
+@keyframes frDown{0%{opacity:0}50%{opacity:1}75%{opacity:0}100%{opacity:0}}
+
+.fog{animation:fogDrift 26s ease-in-out infinite alternate;opacity:.45;}
+@keyframes fogDrift{from{transform:translateX(-18px)}to{transform:translateX(18px)}}
 
 /* ============================================================
    ГРАФ ДИНАКУЛА + облачко речи
@@ -320,56 +347,48 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
   <div id="sky">
     <svg viewBox="0 0 400 600" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
-        <radialGradient id="moonG" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#fff3c4" stop-opacity=".55"/>
-          <stop offset="100%" stop-color="#fff3c4" stop-opacity="0"/>
-        </radialGradient>
         <linearGradient id="fogG" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#7a5aa8" stop-opacity="0"/>
           <stop offset="100%" stop-color="#7a5aa8" stop-opacity=".35"/>
         </linearGradient>
-      </defs>
-      <circle class="moon-glow" cx="312" cy="86" r="92" fill="url(#moonG)"/>
-      <circle cx="312" cy="86" r="42" fill="#fff6d5" opacity=".92"/>
-      <circle cx="298" cy="74" r="7" fill="#efe0b4" opacity=".5"/>
-      <circle cx="324" cy="98" r="9" fill="#efe0b4" opacity=".45"/>
-      <circle cx="326" cy="70" r="4.5" fill="#efe0b4" opacity=".4"/>
-      <g fill="#fff" opacity=".55">
-        <circle cx="40" cy="52" r="1.6"/><circle cx="96" cy="30" r="1.2"/><circle cx="150" cy="70" r="1.5"/>
-        <circle cx="212" cy="40" r="1.1"/><circle cx="60" cy="120" r="1.3"/><circle cx="180" cy="140" r="1"/>
-        <circle cx="360" cy="170" r="1.4"/><circle cx="20" cy="200" r="1.1"/>
-      </g>
-      <!-- голые ветки -->
-      <g stroke="#0d0417" stroke-width="5" fill="none" stroke-linecap="round" opacity=".85">
-        <path d="M-6 0 C 40 34, 26 66, 74 78"/>
-        <path d="M40 34 C 62 22, 78 30, 92 18"/>
-        <path d="M26 66 C 44 62, 52 76, 68 74"/>
-        <path d="M406 12 C 366 40, 384 74, 340 92"/>
-        <path d="M366 40 C 348 26, 330 34, 316 22"/>
-      </g>
-      <!-- туман -->
-      <path class="fog" d="M-40 520 C 80 486, 150 546, 250 508 C 330 478, 380 526, 440 500 L440 620 L-40 620 Z" fill="url(#fogG)"/>
-      <!-- летучие мыши -->
-      <g class="bat" transform="translate(0,0)">
-        <g transform="translate(-40,140)" fill="#0d0417">
-          <ellipse cx="0" cy="0" rx="4" ry="5"/>
-          <path class="bat-wing" d="M-3 -1 C -14 -9, -20 -2, -24 2 C -16 1, -10 5, -3 3 Z"/>
-          <path class="bat-wing" d="M3 -1 C 14 -9, 20 -2, 24 2 C 16 1, 10 5, 3 3 Z"/>
-        </g>
-      </g>
-      <g class="bat bat-2">
-        <g transform="translate(-40,232)" fill="#0d0417" opacity=".8">
+
+        <!-- крыло рисуется один раз, правое — то же самое зеркально -->
+        <path id="w-up"   d="M-3,-2.0 C-7.5,-6.5 -12,-10.5 -17,-11.5 C-15.5,-8.5 -13.5,-5 -11.6,-2.6 C-10.4,-3.6 -9.2,-3.2 -8.4,-1.8 C-7.4,-0.4 -5.8,0.2 -3,1.6 Z"/>
+        <path id="w-mid"  d="M-3,-2.2 C-8,-4.2 -13,-4.6 -18.5,-2.2 C-16,-0.6 -14,1.4 -12.6,3.2 C-11.6,1.4 -10.4,1 -9.2,2.4 C-8.2,3.6 -7,3.6 -6,2.2 C-5,0.9 -4,0.9 -3,1.8 Z"/>
+        <path id="w-down" d="M-3,-1.8 C-7.5,-0.6 -12,2.2 -15.5,7 C-13,6.6 -10.2,4.8 -8,2.8 C-7.2,3.6 -6,3.4 -5.2,2.2 C-4.6,1.4 -3.8,1 -3,1.6 Z"/>
+        <g id="b-body">
           <ellipse cx="0" cy="0" rx="3" ry="4"/>
-          <path class="bat-wing" d="M-2 -1 C -11 -7, -16 -2, -19 2 C -12 1, -8 4, -2 2 Z"/>
-          <path class="bat-wing" d="M2 -1 C 11 -7, 16 -2, 19 2 C 12 1, 8 4, 2 2 Z"/>
+          <path d="M-2.4,-3.4 L-3.2,-6.8 L-0.6,-4.6 Z M2.4,-3.4 L3.2,-6.8 L0.6,-4.6 Z"/>
         </g>
+        <!-- три кадра силуэта; тело в одной и той же точке, поэтому при
+             переключении мышь не дёргается -->
+        <g id="bat-up"><use href="#b-body"/><use href="#w-up"/><use href="#w-up" transform="scale(-1,1)"/></g>
+        <g id="bat-mid"><use href="#b-body"/><use href="#w-mid"/><use href="#w-mid" transform="scale(-1,1)"/></g>
+        <g id="bat-down"><use href="#b-body"/><use href="#w-down"/><use href="#w-down" transform="scale(-1,1)"/></g>
+      </defs>
+
+      <path class="fog" d="M-40 520 C 80 486, 150 546, 250 508 C 330 478, 380 526, 440 500 L440 620 L-40 620 Z" fill="url(#fogG)"/>
+
+      <g transform="translate(0,150) scale(0.62)" fill="#0d0417">
+        <g class="bat"><g class="bob">
+          <g class="fr fr-up"><use href="#bat-up"/></g>
+          <g class="fr fr-mid"><use href="#bat-mid"/></g>
+          <g class="fr fr-down"><use href="#bat-down"/></g>
+        </g></g>
       </g>
-      <g class="bat bat-3">
-        <g transform="translate(-40,86)" fill="#0d0417" opacity=".65">
-          <ellipse cx="0" cy="0" rx="2.5" ry="3.4"/>
-          <path class="bat-wing" d="M-2 -1 C -9 -6, -13 -2, -16 1 C -10 1, -7 3, -2 2 Z"/>
-          <path class="bat-wing" d="M2 -1 C 9 -6, 13 -2, 16 1 C 10 1, 7 3, 2 2 Z"/>
-        </g>
+      <g transform="translate(0,238) scale(0.45)" fill="#0d0417" opacity=".8">
+        <g class="bat bat-2"><g class="bob">
+          <g class="fr fr-up"><use href="#bat-up"/></g>
+          <g class="fr fr-mid"><use href="#bat-mid"/></g>
+          <g class="fr fr-down"><use href="#bat-down"/></g>
+        </g></g>
+      </g>
+      <g transform="translate(0,96) scale(0.78)" fill="#0d0417" opacity=".6">
+        <g class="bat bat-3"><g class="bob">
+          <g class="fr fr-up"><use href="#bat-up"/></g>
+          <g class="fr fr-mid"><use href="#bat-mid"/></g>
+          <g class="fr fr-down"><use href="#bat-down"/></g>
+        </g></g>
       </g>
     </svg>
   </div>
@@ -483,6 +502,7 @@ const CONFIG = {
   assets: {
     dino: 'dino.png',
     logo: 'assets/logo.png',
+    bg: 'assets/bg.webp',   // фон; если файла нет — останется градиент
     dir: 'assets/'
   },
 
@@ -514,59 +534,65 @@ const CONFIG = {
   dinoLines: {
     greeting: [
       '{hero} к вашим услугам!',
-      'Добро пожаловать в сладкий замок!',
-      'Я вампир, но кусаю только конфеты.',
-      'Ночь длинная, сладостей много. Начнём?',
-      'Не бойся, кусаюсь исключительно вежливо.',
-      'Тыквы уже дрожат. Приступай!'
+      'Добро пожаловать в мою кондитерскую.',
+      'Сегодня кусаем только сладкое.',
+      'Ночь только началась, конфеты свежи.',
+      'Я не кусаюсь. Почти.',
+      'Начнём, пока луна не зашла.',
+      'Мои сладости, ваши правила.',
+      'Разомнём клыки?'
     ],
     combo: [
-      'Вот это укус!',
-      'Каскад! Аж клыки звенят.',
-      'Сахарная лавина, обожаю!',
-      'Мой плащ в восторге!',
-      'Даже луна аплодирует.',
-      'Вот за это тебя любят тыквы.'
+      'Туше!',
+      'Графский размах!',
+      'Даже я впечатлён.',
+      'Сладко. Даже слишком.',
+      'Вы точно смертный?',
+      'Моя коллекция пополняется.',
+      'Обвал! Великолепно.',
+      'Аплодирую по-графски.'
     ],
     special: [
-      'О, новая игрушка!',
-      'Свежий спецэлемент, ещё тёплый.',
-      'Осторожно, оно кусается.',
-      'Аристократично сделано!',
-      'Это будет громко.',
-      'Я такое коллекционирую.'
+      'О, это будет громко.',
+      'Осторожно, оно заряжено.',
+      'Приберегите на чёрную ночь.',
+      'Такое я держу под замком.',
+      'Опасная штука. Обожаю.',
+      'Фитиль горит, Граф доволен.',
+      'Котёл требует жертву.'
     ],
     idle: [
-      'Эй, я тут не вечный… хотя вечный.',
-      'Тайлы остывают, между прочим.',
-      'Задремал стоя. Твой ход!',
-      'Я подожду. У меня вечность.',
-      'Может, сходим? Я про ход.',
-      'Тыква уснула. Разбуди её.'
+      'Эй, я тут не вечный. Хотя вечный.',
+      'Конфеты сами не соберутся.',
+      'Я подожду, времени у меня много.',
+      'Задумались? Похвально.',
+      'Луна уже зевает.',
+      'Может быть, ход?',
+      'Слышу, как тает карамель.'
     ],
     lowMoves: [
-      'Ходов мало, азарта много!',
-      'Финишная прямая, мой дорогой!',
-      'Осталось чуть-чуть. Не дрогни!',
-      'Последние конфеты самые вкусные.',
-      'Соберись, я в тебя верю.',
-      'Занавес близко. Впечатли меня!'
+      'Ходов почти не осталось!',
+      'Последние капли, поспешите.',
+      'Скоро рассвет, я тороплюсь.',
+      'Финишная прямая, Граф волнуется.',
+      'Не тратьте впустую, прошу.',
+      'Осталось совсем чуть-чуть.'
     ],
     shuffle: [
-      'Перетасую, как колоду в замке.',
-      'Ходов нет — зову ночной ветер!',
-      'Немного магии, и всё заново.',
-      'Одно движение плаща — и порядок.',
-      'Свежая раздача, прошу!',
-      'Тыквы, по местам!'
+      'Так дело не пойдёт. Тасую!',
+      'Ничего не вышло, перемешаю.',
+      'Немного магии, и поле новое.',
+      'Взмах плащом и порядок.',
+      'Тупик? Не при мне.',
+      'Освежим ассортимент.'
     ],
     farewell: [
-      '{score} очков — достойно графа!',
-      'Ты собрал {score}. Я впечатлён!',
-      '{score} очков. Замок аплодирует!',
-      'Неплохо: {score}. Возвращайся ночью!',
-      '{score}! Клыки дрожат от восторга.',
-      'Записал: {score}. До новых встреч!'
+      '{score} очков! Достойно Графа.',
+      'Неплохо для смертного. {score}!',
+      '{score} заберу в свою коллекцию.',
+      'Возвращайтесь, я всегда голоден.',
+      '{score}. Я запомню это число.',
+      'До новой ночи!'
     ]
   },
 
@@ -737,7 +763,7 @@ const Assets = (() => {
     async init() {
       const list = CONFIG.tiles.map(t => t.src)
         .concat(Object.keys(CONFIG.specials).map(k => CONFIG.specials[k].src))
-        .concat([CONFIG.assets.dino, CONFIG.assets.logo]);
+        .concat([CONFIG.assets.dino, CONFIG.assets.logo, CONFIG.assets.bg]);
       await Promise.all(list.map(preload));
       this.report();
     },
@@ -1758,6 +1784,9 @@ const UI = (() => {
 (async function init() {
   el.dino.src = CONFIG.assets.dino;
   el.logo.src = CONFIG.assets.logo;
+  // фон: картинка сверху, градиент снизу как запасной слой
+  document.getElementById('sky').style.backgroundImage =
+    "url('" + CONFIG.assets.bg + "'), linear-gradient(180deg, #1a0b2e, #2d1b4e)";
   el.dinoName.textContent = CONFIG.heroName;
   el.input.placeholder = CONFIG.texts.idPlaceholder;
   el.btnPlay.textContent = CONFIG.texts.playBtn;
