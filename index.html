@@ -416,7 +416,7 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
     <div id="start-spacer"></div>
     <div id="bigo-field">
       <input id="bigo-input" type="text" inputmode="text" autocomplete="off"
-             autoctalize="off" autocorrect="off" spellcheck="false" maxlength="40" placeholder="Твой BIGO ID">
+             autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40" placeholder="Твой BIGO ID">
       <div id="bigo-error"></div>
       <button id="btn-play" class="candy">Играть</button>
       <button id="btn-top-toggle" class="ghost">Топ-5</button>
@@ -635,6 +635,7 @@ const CONFIG = {
     meNone: 'Сыграй, чтобы попасть в рейтинг',
     meError: 'Место появится позже',
     meLoading: 'Считаю место…',
+    topLater: 'Рейтинг обновится позже',
     comboLabel: 'Каскад ×',
     errEmpty: 'Введи свой BIGO ID',
     errCyrillic: 'ID пишется латиницей и цифрами',
@@ -733,14 +734,19 @@ const Leaderboard = (() => {
   }
 
   return {
-    // { ok, rank, best, offline, error }
+    // { ok, rank, best, total, offline, error }
+    // Локальный режим — рейтинг на устройстве. Серверный — цифры только от сервера:
+    // показывать локальные числа как «рейтинг» значило бы обманывать игрока.
     async submit(payload) {
       const bigoId = payload.bigoId;
       const key = bigoId.toLowerCase();
-      const list = mergeLocal({ bigoId, key, score: payload.score, playedAt: payload.playedAt });
-      const mine = list.filter(e => e.key === key).map(e => e.score);
-      const best = mine.length ? Math.max.apply(null, mine) : payload.score;
-      const localRank = list.findIndex(e => e.key === key) + 1;
+
+      if (!CONFIG.API_BASE) {
+        const list = mergeLocal({ bigoId, key, score: payload.score, playedAt: payload.playedAt });
+        const mine = list.filter(e => e.key === key).map(e => e.score);
+        const best = mine.length ? Math.max.apply(null, mine) : payload.score;
+        return { ok: true, rank: list.findIndex(e => e.key === key) + 1, best, total: list.length, offline: false };
+      }
 
       const body = {
         action: 'submit',
@@ -753,8 +759,7 @@ const Leaderboard = (() => {
         clientTs: payload.playedAt
       };
 
-      if (!CONFIG.API_BASE) return { ok: true, rank: localRank, best, total: list.length, offline: false };
-      if (sent.has(payload.sessionId)) return { ok: true, rank: localRank, best, total: list.length, offline: false };
+      if (sent.has(payload.sessionId)) return { ok: true, offline: false };
 
       try {
         const data = await post(body);
@@ -762,27 +767,29 @@ const Leaderboard = (() => {
         pendingDrop(payload.sessionId);
         if (data && data.ok === false) {
           // сервер отказал осмысленно — его текст написан для игрока
-          return { ok: false, error: data.error || '', rank: localRank, best, offline: false };
+          return { ok: false, error: data.error || '', offline: false };
         }
         return {
           ok: true,
-          rank: (data && data.rank != null) ? data.rank : localRank,
-          best: (data && data.best != null) ? data.best : best,
-          total: (data && data.total != null) ? data.total : undefined,
+          rank: (data && data.rank != null) ? data.rank : null,
+          best: (data && data.best != null) ? data.best : null,
+          total: (data && data.total != null) ? data.total : null,
           offline: false
         };
       } catch (e) {
         console.warn('[SPOOKIES] результат не ушёл на сервер, дошлём позже:', e);
         pendingAdd(body);
-        return { ok: false, rank: localRank, best, offline: true };
+        return { ok: false, offline: true };
       }
     },
 
     // [{ bigoId, score, rank }]
+    // массив строк, либо null — «не удалось получить рейтинг»
     async top(limit) {
       limit = limit || 5;
-      const local = all().slice(0, limit).map((e, i) => ({ bigoId: e.bigoId, score: e.score, rank: i + 1 }));
-      if (!CONFIG.API_BASE) return local;
+      if (!CONFIG.API_BASE) {
+        return all().slice(0, limit).map((e, i) => ({ bigoId: e.bigoId, score: e.score, rank: i + 1 }));
+      }
 
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), CONFIG.API_TIMEOUT);
@@ -792,10 +799,10 @@ const Leaderboard = (() => {
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
-        return Array.isArray(data) ? data : local;
+        return Array.isArray(data) ? data : null;
       } catch (e) {
-        console.warn('[SPOOKIES] топ не загрузился, показываю локальный:', e);
-        return local;
+        console.warn('[SPOOKIES] топ не загрузился:', e);
+        return null;
       } finally { clearTimeout(timer); }
     },
 
@@ -1800,6 +1807,11 @@ const UI = (() => {
     const myId = Storage.load(ID_KEY, '');
     const myKey = myId ? myId.toLowerCase() : '';
     const list = await Leaderboard.top(5);
+    if (list === null) {
+      // сервер не ответил — честно говорим об этом, локальные числа не подставляем
+      container.innerHTML = '<div class="top-empty">' + CONFIG.texts.topLater + '</div>';
+      return;
+    }
 
     let html = '';
     if (!list.length) {
@@ -1838,10 +1850,15 @@ const UI = (() => {
     Dino.move('pos-result');
     el.resultTitle.textContent = CONFIG.texts.resultTitle;
     el.resultScore.textContent = data.score;
-    const stored = Storage.load('spookies.best.' + data.bigoId.toLowerCase(), 0);
-    const best = Math.max(stored, data.score);
-    Storage.save('spookies.best.' + data.bigoId.toLowerCase(), best);
-    el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + formatNum(best);
+    const bestKey = 'spookies.best.' + data.bigoId.toLowerCase();
+    if (!CONFIG.API_BASE) {
+      const stored = Storage.load(bestKey, 0);
+      const best = Math.max(stored, data.score);
+      Storage.save(bestKey, best);
+      el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + formatNum(best);
+    } else {
+      el.resultBest.textContent = '';   // придёт из ответа сервера после сохранения
+    }
     el.resultRank.textContent = '';
     el.resultNote.textContent = '';
     el.btnSave.disabled = false;
@@ -1854,25 +1871,34 @@ const UI = (() => {
     saving = true;
     el.btnSave.disabled = true;
     el.btnSave.textContent = CONFIG.texts.savingBtn;
+
     const res = await Leaderboard.submit(lastResult);
     saving = false; saved = true;
     el.btnSave.textContent = CONFIG.texts.savedBtn;
+
     if (res.error) {
       // сервер отказал осмысленно — показываем его текст, он написан для игрока
       el.resultNote.textContent = res.error;
-    } else {
-      el.resultNote.textContent = res.offline ? CONFIG.texts.savedOffline : CONFIG.texts.savedOk;
+      return;
     }
-    // позицию берём из ответа на сохранение — отдельный запрос здесь не нужен
-    if (res.rank) {
+    if (res.offline) {
+      // результат лежит в очереди досылки; места и рекорда мы не знаем — и не выдумываем
+      el.resultNote.textContent = CONFIG.texts.savedOffline;
+      return;
+    }
+
+    el.resultNote.textContent = CONFIG.texts.savedOk;
+    if (res.best != null) el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + formatNum(res.best);
+    if (res.rank != null) {
+      // позицию берём из ответа на сохранение — отдельный запрос здесь не нужен
       el.resultRank.className = '';
       el.resultRank.innerHTML = '<span class="me-line"></span>';
       renderMeLine(el.resultRank.firstChild, {
-        found: true, rank: res.rank, total: res.total, score: res.best != null ? res.best : lastResult.score
+        found: true, rank: res.rank, total: res.total,
+        score: res.best != null ? res.best : lastResult.score
       });
       meCache = { found: true, rank: res.rank, total: res.total, score: res.best };
     }
-    if (res.best) el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + formatNum(res.best);
   }
 
   function bind() {
