@@ -458,9 +458,11 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
    CONFIG — единственное место, где всё крутится
    ============================================================ */
 const CONFIG = {
-  // адрес бэкенда; null = локальный режим (рейтинг в пределах устройства)
-  API_BASE: null,
-  API_TIMEOUT: 3000,
+  // URL веб-приложения Apps Script, заканчивается на /exec.
+  // Пустая строка = локальный режим: игра полностью работает без сервера.
+  API_BASE: "https://script.google.com/macros/s/AKfycbzJz7Vunb9olw3cDyhGpXMhzBf6crXkwQhIc734O37Rj7F-_zoiiExdYLNDbBpjsCaJ/exec",
+  GAME_KEY: "550e8400-e29b-41d4-a716-446655440000",       // тот же ключ, что в CONFIG на сервере
+  API_TIMEOUT: 8000,  // таймаут запроса, мс
 
   // поле
   grid: {
@@ -664,11 +666,12 @@ const Storage = (() => {
    ============================================================ */
 const Leaderboard = (() => {
   const KEY = 'spookies.scores';
-  const sent = new Set(); // sessionId, которые уже ушли
+  const PENDING = 'spookies.pending';   // результаты, не дошедшие до сервера
+  const sent = new Set();               // sessionId, уже отправленные в этой сессии
 
   function all() { return Storage.load(KEY, []); }
 
-  // одна запись на игрока: сравниваем по ключу в нижнем регистре
+  // локальное зеркало: одна запись на игрока, сравнение по нижнему регистру
   function mergeLocal(entry) {
     const list = all();
     const i = list.findIndex(e => e.key === entry.key);
@@ -682,48 +685,76 @@ const Leaderboard = (() => {
     return list;
   }
 
-  async function request(url, options) {
+  function pendingAll() { return Storage.load(PENDING, []); }
+  function pendingAdd(body) {
+    const list = pendingAll();
+    if (list.some(x => x.sessionId === body.sessionId)) return;
+    list.push(body);
+    Storage.save(PENDING, list.slice(-20)); // храним последние 20, больше не нужно
+  }
+  function pendingDrop(sessionId) {
+    Storage.save(PENDING, pendingAll().filter(x => x.sessionId !== sessionId));
+  }
+
+  // Apps Script не умеет OPTIONS, поэтому запрос должен быть «простым»:
+  // text/plain, никаких своих заголовков, ключ — в теле.
+  async function post(body) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), CONFIG.API_TIMEOUT);
     try {
-      const res = await fetch(url, Object.assign({ signal: ctrl.signal }, options || {}));
+      const res = await fetch(CONFIG.API_BASE, {
+        method: 'POST',
+        redirect: 'follow',                                  // Apps Script отвечает редиректом
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return await res.json();
     } finally { clearTimeout(timer); }
   }
 
   return {
-    // { ok, rank, best, offline }
+    // { ok, rank, best, offline, error }
     async submit(payload) {
       const bigoId = payload.bigoId;
       const key = bigoId.toLowerCase();
-      const entry = { bigoId, key, score: payload.score, playedAt: payload.playedAt };
-      const list = mergeLocal(entry);
+      const list = mergeLocal({ bigoId, key, score: payload.score, playedAt: payload.playedAt });
       const mine = list.filter(e => e.key === key).map(e => e.score);
       const best = mine.length ? Math.max.apply(null, mine) : payload.score;
       const localRank = list.findIndex(e => e.key === key) + 1;
+
+      const body = {
+        action: 'submit',
+        gameKey: CONFIG.GAME_KEY,
+        bigoId: bigoId,
+        score: payload.score,
+        moves: payload.moves,
+        duration: payload.duration,
+        sessionId: payload.sessionId,
+        clientTs: payload.playedAt
+      };
 
       if (!CONFIG.API_BASE) return { ok: true, rank: localRank, best, offline: false };
       if (sent.has(payload.sessionId)) return { ok: true, rank: localRank, best, offline: false };
 
       try {
-        const data = await request(CONFIG.API_BASE + '/scores', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bigoId, key,
-            score: payload.score,
-            playedAt: payload.playedAt,
-            sessionId: payload.sessionId,
-            moves: payload.moves,
-            duration: payload.duration
-          })
-        });
+        const data = await post(body);
         sent.add(payload.sessionId);
-        return { ok: true, rank: data.rank != null ? data.rank : localRank,
-                 best: data.best != null ? data.best : best, offline: false };
+        pendingDrop(payload.sessionId);
+        if (data && data.ok === false) {
+          // сервер отказал осмысленно — его текст написан для игрока
+          return { ok: false, error: data.error || '', rank: localRank, best, offline: false };
+        }
+        return {
+          ok: true,
+          rank: (data && data.rank != null) ? data.rank : localRank,
+          best: (data && data.best != null) ? data.best : best,
+          offline: false
+        };
       } catch (e) {
-        console.warn('[SPOOKIES] submit не прошёл, результат остался локально:', e);
+        console.warn('[SPOOKIES] результат не ушёл на сервер, дошлём позже:', e);
+        pendingAdd(body);
         return { ok: false, rank: localRank, best, offline: true };
       }
     },
@@ -733,12 +764,36 @@ const Leaderboard = (() => {
       limit = limit || 5;
       const local = all().slice(0, limit).map((e, i) => ({ bigoId: e.bigoId, score: e.score, rank: i + 1 }));
       if (!CONFIG.API_BASE) return local;
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), CONFIG.API_TIMEOUT);
       try {
-        const data = await request(CONFIG.API_BASE + '/scores/top?limit=' + limit, { method: 'GET' });
-        return Array.isArray(data) ? data : (data.items || local);
+        const res = await fetch(CONFIG.API_BASE + '?action=top&limit=' + limit, {
+          method: 'GET', redirect: 'follow', signal: ctrl.signal
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        return Array.isArray(data) ? data : local;
       } catch (e) {
         console.warn('[SPOOKIES] топ не загрузился, показываю локальный:', e);
         return local;
+      } finally { clearTimeout(timer); }
+    },
+
+    // тихая досылка накопленного при следующем открытии игры, по одному
+    async flushPending() {
+      if (!CONFIG.API_BASE) return;
+      const list = pendingAll();
+      for (const body of list) {
+        try {
+          const data = await post(body);
+          sent.add(body.sessionId);
+          pendingDrop(body.sessionId);
+          if (data && data.ok === false) console.warn('[SPOOKIES] сервер отклонил отложенный результат:', data.error);
+        } catch (e) {
+          console.warn('[SPOOKIES] досылка не удалась, попробуем в следующий раз');
+          break; // сеть недоступна — остальные ждут следующего запуска
+        }
       }
     }
   };
@@ -1708,7 +1763,12 @@ const UI = (() => {
     const res = await Leaderboard.submit(lastResult);
     saving = false; saved = true;
     el.btnSave.textContent = CONFIG.texts.savedBtn;
-    el.resultNote.textContent = res.offline ? CONFIG.texts.savedOffline : CONFIG.texts.savedOk;
+    if (res.error) {
+      // сервер отказал осмысленно — показываем его текст, он написан для игрока
+      el.resultNote.textContent = res.error;
+    } else {
+      el.resultNote.textContent = res.offline ? CONFIG.texts.savedOffline : CONFIG.texts.savedOk;
+    }
     if (res.rank) el.resultRank.textContent = CONFIG.texts.rankLabel + ' ' + res.rank;
     if (res.best) el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + res.best;
   }
@@ -1798,6 +1858,7 @@ const UI = (() => {
   el.btnSound.textContent = Sound.isOn() ? '🔊' : '🔇';
 
   await Assets.init();
+  Leaderboard.flushPending();   // без await: досылка не должна задерживать показ игры
 
   Dino.move('pos-start');
   Dino.say('greeting');
