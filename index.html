@@ -197,6 +197,16 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
 .top-id{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .top-score{color:var(--lime);}
 .top-empty{font-size:12px;opacity:.7;text-align:center;padding:6px 0;font-weight:600;}
+/* строка игрока: своя позиция под таблицей топ-5 */
+.top-row.is-me{background:rgba(255,117,24,.20);border-radius:8px;padding:4px 6px;margin:1px -2px;}
+.top-tag{font-size:11px;font-weight:800;color:var(--orange);margin-left:2px;white-space:nowrap;}
+.top-me{margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.16);}
+.me-line{
+  background:rgba(255,255,255,.12);border-radius:10px;
+  padding:6px 8px;font-size:13px;font-weight:700;
+}
+.me-line.me-dim{font-weight:600;opacity:.72;}
+.me-you{color:var(--orange);}
 
 /* ---------- игровой экран ---------- */
 #screen-game{padding:0;justify-content:flex-start;}
@@ -460,8 +470,8 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
 const CONFIG = {
   // URL веб-приложения Apps Script, заканчивается на /exec.
   // Пустая строка = локальный режим: игра полностью работает без сервера.
-  API_BASE: "https://script.google.com/macros/s/AKfycbwbfSFfaI4XKQlpmYrtajElnXP4vRtkKBg4D9JagpWU20QisD9ee2iKAH4rYT23rRW3/exec",
-  GAME_KEY: "550e8400-e29b-41d4-a716-446655440000",       // тот же ключ, что в CONFIG на сервере
+  API_BASE: "https://script.google.com/macros/s/AKfycbzpveMjFVXPzXU8Pmew0_XFzzJy2lN-t3Fh69aPearxHrq_9kUHN2B3brG92b30zi4a/exec",
+  GAME_KEY: "67d6akadmlmlaw",       // тот же ключ, что в CONFIG на сервере
   API_TIMEOUT: 8000,  // таймаут запроса, мс
 
   // поле
@@ -617,6 +627,14 @@ const CONFIG = {
     savedOffline: 'Результат сохранён, рейтинг обновится позже',
     savedOk: 'Результат сохранён!',
     topEmpty: 'Пока никто не играл. Будь первым!',
+    meYou: 'Ты:',
+    meTag: 'это ты',
+    mePlace: '{rank}-е место из {total}',
+    mePlaceNoTotal: '{rank}-е место',
+    meScoreWord: 'очков',
+    meNone: 'Сыграй, чтобы попасть в рейтинг',
+    meError: 'Место появится позже',
+    meLoading: 'Считаю место…',
     comboLabel: 'Каскад ×',
     errEmpty: 'Введи свой BIGO ID',
     errCyrillic: 'ID пишется латиницей и цифрами',
@@ -735,8 +753,8 @@ const Leaderboard = (() => {
         clientTs: payload.playedAt
       };
 
-      if (!CONFIG.API_BASE) return { ok: true, rank: localRank, best, offline: false };
-      if (sent.has(payload.sessionId)) return { ok: true, rank: localRank, best, offline: false };
+      if (!CONFIG.API_BASE) return { ok: true, rank: localRank, best, total: list.length, offline: false };
+      if (sent.has(payload.sessionId)) return { ok: true, rank: localRank, best, total: list.length, offline: false };
 
       try {
         const data = await post(body);
@@ -750,6 +768,7 @@ const Leaderboard = (() => {
           ok: true,
           rank: (data && data.rank != null) ? data.rank : localRank,
           best: (data && data.best != null) ? data.best : best,
+          total: (data && data.total != null) ? data.total : undefined,
           offline: false
         };
       } catch (e) {
@@ -777,6 +796,37 @@ const Leaderboard = (() => {
       } catch (e) {
         console.warn('[SPOOKIES] топ не загрузился, показываю локальный:', e);
         return local;
+      } finally { clearTimeout(timer); }
+    },
+
+    // позиция владельца введённого BIGO ID: { found, bigoId, score, rank, total }
+    async me(bigoId) {
+      const id = String(bigoId || '');
+      const key = id.toLowerCase();
+      if (!key) return { found: false };
+
+      const list = all();
+      const i = list.findIndex(e => e.key === key);
+      const local = (i >= 0)
+        ? { found: true, bigoId: list[i].bigoId, score: list[i].score, rank: i + 1, total: list.length }
+        : { found: false, total: list.length };
+
+      if (!CONFIG.API_BASE) return local;
+
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), CONFIG.API_TIMEOUT);
+      try {
+        const res = await fetch(CONFIG.API_BASE + '?action=rank&bigoId=' + encodeURIComponent(id), {
+          method: 'GET', redirect: 'follow', signal: ctrl.signal
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        // сервер может ещё не уметь action=rank — это не поломка, а «место появится позже»
+        if (!data || typeof data.found !== 'boolean') throw new Error('действие не поддерживается');
+        return data;
+      } catch (e) {
+        console.warn('[SPOOKIES] позиция игрока не загрузилась:', e);
+        return { error: true };
       } finally { clearTimeout(timer); }
     },
 
@@ -888,6 +938,10 @@ function uuid() {
     const r = Math.random() * 16 | 0;
     return (ch === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
+}
+// 8320 → «8 320», разделитель неразрывный
+function formatNum(n) {
+  return String(Number(n) || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
 }
 function srcOfType(type) {
   const t = CONFIG.tiles.find(x => x.type === type);
@@ -1703,6 +1757,7 @@ const Game = (() => {
 const UI = (() => {
   const ID_KEY = 'spookies.bigoId';
   let lastResult = null, saving = false, saved = false;
+  let meCache = null;   // позиция игрока, чтобы не дёргать сервер при каждом открытии панели
 
   // нормализация: срезаем «ID:», убираем пробелы
   function normalizeId(raw) {
@@ -1725,21 +1780,60 @@ const UI = (() => {
     for (const k in el.screens) el.screens[k].classList.toggle('active', k === name);
   }
 
+  // одна строка «Ты: N-е место из M · X очков» во всех её состояниях
+  function renderMeLine(node, me) {
+    if (!node) return;
+    if (!me || me.error) { node.className = 'me-line me-dim'; node.textContent = CONFIG.texts.meError; return; }
+    if (!me.found) { node.className = 'me-line me-dim'; node.textContent = CONFIG.texts.meNone; return; }
+    const place = me.total
+      ? CONFIG.texts.mePlace.replace('{rank}', me.rank).replace('{total}', formatNum(me.total))
+      : CONFIG.texts.mePlaceNoTotal.replace('{rank}', me.rank);
+    node.className = 'me-line';
+    node.innerHTML = '<span class="me-you"></span> ' + place + ' \u00B7 ' +
+                     formatNum(me.score) + ' ' + CONFIG.texts.meScoreWord;
+    node.querySelector('.me-you').textContent = CONFIG.texts.meYou;
+  }
+
   async function renderTop(container) {
-    container.innerHTML = '<div class="top-empty">…</div>';
+    container.innerHTML = '<div class="top-empty">' + CONFIG.texts.meLoading + '</div>';
+
+    const myId = Storage.load(ID_KEY, '');
+    const myKey = myId ? myId.toLowerCase() : '';
     const list = await Leaderboard.top(5);
-    if (!list.length) { container.innerHTML = '<div class="top-empty">' + CONFIG.texts.topEmpty + '</div>'; return; }
-    container.innerHTML = list.map(e =>
-      '<div class="top-row"><span class="top-rank">' + e.rank + '</span>' +
-      '<span class="top-id"></span><span class="top-score">' + e.score + '</span></div>'
-    ).join('');
+
+    let html = '';
+    if (!list.length) {
+      html += '<div class="top-empty">' + CONFIG.texts.topEmpty + '</div>';
+    } else {
+      html += list.map(e => {
+        const isMe = myKey && String(e.bigoId).toLowerCase() === myKey;
+        return '<div class="top-row' + (isMe ? ' is-me' : '') + '">' +
+               '<span class="top-rank">' + e.rank + '</span>' +
+               '<span class="top-id"></span>' +
+               (isMe ? '<span class="top-tag">' + CONFIG.texts.meTag + '</span>' : '') +
+               '<span class="top-score">' + formatNum(e.score) + '</span></div>';
+      }).join('');
+    }
+    html += '<div class="top-me"><div class="me-line me-dim">' + CONFIG.texts.meLoading + '</div></div>';
+    container.innerHTML = html;
+
     // ID вставляем текстом, чтобы не ловить разметку из чужого ввода
     const nodes = container.querySelectorAll('.top-id');
     list.forEach((e, i) => { if (nodes[i]) nodes[i].textContent = e.bigoId; });
+
+    const meBox = container.querySelector('.top-me');
+    // игрок уже подсвечен внутри таблицы — отдельной строкой не дублируем
+    const inTop = myKey && list.some(e => String(e.bigoId).toLowerCase() === myKey);
+    if (!myId || inTop) { if (meBox) meBox.remove(); return; }
+
+    const me = meCache || await Leaderboard.me(myId);
+    if (me && !me.error) meCache = me;           // один запрос на открытие экрана
+    renderMeLine(meBox.firstChild, me);
   }
 
   function showResult(data) {
     lastResult = data; saved = false; saving = false;
+    meCache = null;   // сыграна новая партия — позиция могла измениться
     show('result');
     Dino.move('pos-result');
     el.resultTitle.textContent = CONFIG.texts.resultTitle;
@@ -1747,7 +1841,7 @@ const UI = (() => {
     const stored = Storage.load('spookies.best.' + data.bigoId.toLowerCase(), 0);
     const best = Math.max(stored, data.score);
     Storage.save('spookies.best.' + data.bigoId.toLowerCase(), best);
-    el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + best;
+    el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + formatNum(best);
     el.resultRank.textContent = '';
     el.resultNote.textContent = '';
     el.btnSave.disabled = false;
@@ -1769,8 +1863,16 @@ const UI = (() => {
     } else {
       el.resultNote.textContent = res.offline ? CONFIG.texts.savedOffline : CONFIG.texts.savedOk;
     }
-    if (res.rank) el.resultRank.textContent = CONFIG.texts.rankLabel + ' ' + res.rank;
-    if (res.best) el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + res.best;
+    // позицию берём из ответа на сохранение — отдельный запрос здесь не нужен
+    if (res.rank) {
+      el.resultRank.className = '';
+      el.resultRank.innerHTML = '<span class="me-line"></span>';
+      renderMeLine(el.resultRank.firstChild, {
+        found: true, rank: res.rank, total: res.total, score: res.best != null ? res.best : lastResult.score
+      });
+      meCache = { found: true, rank: res.rank, total: res.total, score: res.best };
+    }
+    if (res.best) el.resultBest.textContent = CONFIG.texts.bestLabel + ' ' + formatNum(res.best);
   }
 
   function bind() {
