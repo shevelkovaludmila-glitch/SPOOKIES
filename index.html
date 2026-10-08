@@ -190,6 +190,15 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
   width:100%;max-width:300px;margin-top:8px;display:none;
   background:rgba(0,0,0,.32);border:2px solid rgba(255,255,255,.14);
   border-radius:14px;padding:8px 10px;
+  max-height:34vh;overflow:auto;          /* на низких экранах таблица прокручивается */
+  -webkit-overflow-scrolling:touch;
+}
+#top-panel-result{
+  width:100%;max-width:300px;margin-top:10px;
+  background:rgba(0,0,0,.32);border:2px solid rgba(255,255,255,.14);
+  border-radius:14px;padding:8px 10px;
+  max-height:38vh;overflow:auto;
+  -webkit-overflow-scrolling:touch;
 }
 #top-panel.open{display:block;}
 .top-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;padding:3px 0;}
@@ -470,7 +479,7 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
 const CONFIG = {
   // URL веб-приложения Apps Script, заканчивается на /exec.
   // Пустая строка = локальный режим: игра полностью работает без сервера.
-  API_BASE: "https://script.google.com/macros/s/AKfycbySlnPg9TpoUrZL8ZGpFmySyVoMcFKkm8V56Bk34NiXgSyt4yqNn2wHoGn6ubkRPIZ3/exec",
+  API_BASE: "https://script.google.com/macros/s/AKfycbzUZeuDeGVlZMIvha-O6W1HwES8kMF7i-W1FkyzVC4YGR7UZtF7-HVMVdt7K9iZ7ueX/exec",
   GAME_KEY: "Yuusnaksn68378ebdskjkl",       // тот же ключ, что в CONFIG на сервере
   API_TIMEOUT: 8000,  // таймаут запроса, мс
 
@@ -612,6 +621,7 @@ const CONFIG = {
   texts: {
     playBtn: 'Играть',
     topBtn: 'Топ-5',
+    hideTopBtn: 'Скрыть топ',
     finishBtn: 'Закончить',
     saveBtn: 'Сохранить результат',
     savingBtn: 'Сохраняю…',
@@ -1775,6 +1785,7 @@ const Game = (() => {
     playing = true; busy = false;
 
     UI.show('game');
+    el.dinoWrap.style.display = '';
     Dino.move('pos-game');
     try {
       layoutSize();
@@ -1894,10 +1905,20 @@ const UI = (() => {
     renderMeLine(meBox.firstChild, me);
   }
 
+  // Граф скрывается, когда поверх него открывается таблица топа
+  function showDino(visible) {
+    el.dinoWrap.style.display = visible ? '' : 'none';
+    if (!visible) Dino.hide();
+  }
+
   function showResult(data) {
     lastResult = data; saved = false; saving = false;
     meCache = null;   // сыграна новая партия — позиция могла измениться
     show('result');
+    const oldPanel = document.getElementById('top-panel-result');
+    if (oldPanel) oldPanel.style.display = 'none';
+    el.btnTopResult.textContent = CONFIG.texts.topBtn;
+    showDino(true);
     Dino.move('pos-result');
     el.resultTitle.textContent = CONFIG.texts.resultTitle;
     el.resultScore.textContent = data.score;
@@ -1998,13 +2019,24 @@ const UI = (() => {
 
     el.btnTopResult.addEventListener('click', () => {
       let panel = document.getElementById('top-panel-result');
+
+      // повторный тап закрывает таблицу и возвращает Графа
+      if (panel && panel.style.display !== 'none') {
+        panel.style.display = 'none';
+        showDino(true);
+        el.btnTopResult.textContent = CONFIG.texts.topBtn;
+        return;
+      }
+
       if (!panel) {
         panel = document.createElement('div');
         panel.id = 'top-panel-result';
-        panel.className = 'open';
-        panel.style.cssText = 'width:100%;max-width:300px;background:rgba(0,0,0,.32);border:2px solid rgba(255,255,255,.14);border-radius:14px;padding:8px 10px;';
         el.resultNote.after(panel);
       }
+      panel.style.display = '';
+      // на телефоне Граф стоит ровно поверх таблицы — прячем его, пока она открыта
+      showDino(false);
+      el.btnTopResult.textContent = CONFIG.texts.hideTopBtn;
       renderTop(panel);
     });
 
