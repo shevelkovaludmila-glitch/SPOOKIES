@@ -416,7 +416,7 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
     <div id="start-spacer"></div>
     <div id="bigo-field">
       <input id="bigo-input" type="text" inputmode="text" autocomplete="off"
-             autoctalize="off" autocorrect="off" spellcheck="false" maxlength="40" placeholder="Твой BIGO ID">
+             autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40" placeholder="Твой BIGO ID">
       <div id="bigo-error"></div>
       <button id="btn-play" class="candy">Играть</button>
       <button id="btn-top-toggle" class="ghost">Топ-5</button>
@@ -470,8 +470,8 @@ button.ghost{background:linear-gradient(180deg,#4a3070,#33204f);box-shadow:0 4px
 const CONFIG = {
   // URL веб-приложения Apps Script, заканчивается на /exec.
   // Пустая строка = локальный режим: игра полностью работает без сервера.
-  API_BASE: "https://script.google.com/macros/s/AKfycbzeK8yGFIDRiFXkneHD0ND3ifrGiKQdQZ9VpZF4NXFwz_xsglH_x3e7AUh9wyETIWP2/exec",
-  GAME_KEY: "67d6akadmlmlaw",       // тот же ключ, что в CONFIG на сервере
+  API_BASE: "https://script.google.com/macros/s/AKfycbwF8AqfkbDYnDjRbaaFUfvIrUCUfAhD3euRvI_gNPS7IfMC0DxBlHavQxz6msQu8M1C/exec",
+  GAME_KEY: "Yuusnaksn68378ebdskjkl",       // тот же ключ, что в CONFIG на сервере
   API_TIMEOUT: 8000,  // таймаут запроса, мс
 
   // поле
@@ -625,6 +625,7 @@ const CONFIG = {
     bestLabel: 'Лучший результат:',
     rankLabel: 'Место в топе:',
     savedOffline: 'Результат сохранён, рейтинг обновится позже',
+    noToken: 'Партия не подтверждена сервером — результат не засчитан. Сыграй заново',
     savedOk: 'Результат сохранён!',
     topEmpty: 'Пока никто не играл. Будь первым!',
     meYou: 'Ты:',
@@ -687,6 +688,7 @@ const Leaderboard = (() => {
   const KEY = 'spookies.scores';
   const PENDING = 'spookies.pending';   // результаты, не дошедшие до сервера
   const sent = new Set();               // sessionId, уже отправленные в этой сессии
+  let sessionToken = null;              // одноразовый токен партии, выдаёт сервер
 
   function all() { return Storage.load(KEY, []); }
 
@@ -734,6 +736,29 @@ const Leaderboard = (() => {
   }
 
   return {
+    // Рукопожатие: берём у сервера одноразовый токен на партию.
+    // Сервер засекает время выдачи по своим часам, поэтому мгновенная
+    // отправка результата «из консоли» через него не проходит.
+    // → { ok } либо { ok: false, error } — текст от сервера показываем игроку сразу,
+    // чтобы он не узнал о техработах только в конце партии
+    async startSession(bigoId) {
+      sessionToken = null;
+      if (!CONFIG.API_BASE) return { ok: true };
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const data = await post({ action: 'start', gameKey: CONFIG.GAME_KEY, bigoId: bigoId });
+          if (data && data.ok && data.token) { sessionToken = data.token; return { ok: true }; }
+          console.warn('[SPOOKIES] сервер не выдал токен партии:', data && data.error);
+          return { ok: false, error: (data && data.error) || '' };   // осмысленный отказ не повторяем
+        } catch (e) {
+          console.warn('[SPOOKIES] токен партии не получен, попытка ' + (attempt + 1) + ':', e);
+        }
+      }
+      return { ok: false, error: '' };   // связи нет — молча, об этом скажем в конце
+    },
+
+    hasToken() { return !CONFIG.API_BASE || !!sessionToken; },
+
     // { ok, rank, best, total, offline, error }
     // Локальный режим — рейтинг на устройстве. Серверный — цифры только от сервера:
     // показывать локальные числа как «рейтинг» значило бы обманывать игрока.
@@ -756,10 +781,14 @@ const Leaderboard = (() => {
         moves: payload.moves,
         duration: payload.duration,
         sessionId: payload.sessionId,
-        clientTs: payload.playedAt
+        clientTs: payload.playedAt,
+        token: sessionToken
       };
 
       if (sent.has(payload.sessionId)) return { ok: true, offline: false };
+
+      // без токена сервер всё равно откажет — в очередь досылки такое не кладём
+      if (!sessionToken) return { ok: false, error: CONFIG.texts.noToken, offline: false };
 
       try {
         const data = await post(body);
@@ -946,6 +975,23 @@ function uuid() {
     return (ch === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 }
+// Плашка сверху с сообщением от сервера (техработы, отказ в старте партии).
+// Тап по ней — скрыть.
+function showNotice(text) {
+  if (!text) return;
+  let bar = document.getElementById('server-notice');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'server-notice';
+    bar.style.cssText = 'position:absolute;left:0;right:0;top:0;z-index:98;' +
+      'background:#8b1a2b;color:#fff;font:700 12px/1.4 sans-serif;padding:7px 10px;text-align:center;';
+    bar.addEventListener('click', () => bar.remove());
+    const app = document.getElementById('app');
+    if (app) app.appendChild(bar);
+  }
+  bar.textContent = text;
+}
+
 // 8320 → «8 320», разделитель неразрывный
 function formatNum(n) {
   return String(Number(n) || 0).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
@@ -1718,6 +1764,11 @@ const Game = (() => {
     bigoId = id;
     score = 0; shownScore = 0; bonusUsed = 0; movesMade = 0;
     sessionId = uuid(); startedAt = Date.now();
+    // рукопожатие идёт параллельно, игру не задерживает;
+    // если сервер отказал осмысленно (техработы) — говорим об этом сразу
+    Leaderboard.startSession(bigoId).then(res => {
+      if (res && !res.ok && res.error) showNotice(res.error);
+    });
     el.scoreVal.textContent = '0';
     setMoves(CONFIG.moves.start);
     el.comboLine.classList.remove('show');
